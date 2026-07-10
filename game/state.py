@@ -113,6 +113,7 @@ class Game:
         # تعداد حدس مجاز در نوبت جاری (بر اساس عددی که اسپای‌مستر تعیین می‌کند)
         self.clue_count: int = 0
         self.clue_word: Optional[str] = None
+        self.clue_stars: int = 0
         self.correct_guesses_this_turn: int = 0
 
         # برای پیام‌های تلگرام: آیدی آخرین پیام لابی/بازی که فرستاده شده (برای ادیت/حذف)
@@ -243,14 +244,15 @@ class Game:
 
     # ---------- روند بازی ----------
 
-    def set_clue_count(self, n: int, word: Optional[str] = None) -> None:
-        """اسپای‌مستر تیم فعلی تعداد و کلمه‌ی سرنخ را مشخص می‌کند."""
+    def set_clue_count(self, n: int, word: Optional[str] = None, stars: int = 0) -> None:
+        """اسپای‌مستر تیم فعلی تعداد، کلمه، و ستاره‌ی (قانون ستاره) سرنخ را مشخص می‌کند."""
         if self.status != GameStatus.AWAITING_CLUE:
             raise GameError("الان زمان تعیین تعداد کلمه نیست.")
         if n < 0:
             raise GameError("عدد نامعتبر.")
         self.clue_count = n
         self.clue_word = word
+        self.clue_stars = stars
         self.correct_guesses_this_turn = 0
         self.status = GameStatus.GUESSING
 
@@ -315,6 +317,7 @@ class Game:
         self.current_turn = Team.BLUE if self.current_turn == Team.RED else Team.RED
         self.clue_count = 0
         self.clue_word = None
+        self.clue_stars = 0
         self.correct_guesses_this_turn = 0
         self.status = GameStatus.AWAITING_CLUE
         self.round_number += 1
@@ -353,6 +356,7 @@ class Game:
             "current_turn": self.current_turn.value if self.current_turn else None,
             "clue_count": self.clue_count,
             "clue_word": self.clue_word,
+            "clue_stars": self.clue_stars,
             "correct_guesses_this_turn": self.correct_guesses_this_turn,
             "last_message_id": self.last_message_id,
             "winner": self.winner.value if self.winner else None,
@@ -377,6 +381,7 @@ class Game:
         g.current_turn = Team(d["current_turn"]) if d["current_turn"] else None
         g.clue_count = d["clue_count"]
         g.clue_word = d.get("clue_word")
+        g.clue_stars = d.get("clue_stars", 0)
         g.correct_guesses_this_turn = d["correct_guesses_this_turn"]
         g.last_message_id = d["last_message_id"]
         g.winner = Team(d["winner"]) if d["winner"] else None
