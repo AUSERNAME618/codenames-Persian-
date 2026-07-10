@@ -33,3 +33,8 @@ async def cmd_new_game(message: Message, db_conn: asyncpg.Pool) -> None:
     )
     game.last_message_id = sent.message_id
     await save_game(db_conn, game)
+
+    await message.answer(
+        "💡 اولین بارتونه بازی می‌کنید؟ دستور /راهنما رو بفرستید توی گروه تا با "
+        "قوانین کدنیم و طرز کار ربات آشنا بشید."
+    )
