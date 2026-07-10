@@ -11,7 +11,7 @@ from aiogram import Bot, Dispatcher
 
 from config import BOT_TOKEN, DATABASE_URL
 from database.db import init_db
-from handlers import commands, lobby
+from handlers import commands, lobby, help as help_handlers
 from handlers import game as game_handlers
 
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +46,7 @@ async def main() -> None:
     dp = Dispatcher()
 
     dp.include_router(commands.router)
+    dp.include_router(help_handlers.router)
     dp.include_router(lobby.router)
     dp.include_router(game_handlers.router)
 
