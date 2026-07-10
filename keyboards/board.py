@@ -34,7 +34,8 @@ def build_board_caption(game: Game) -> str:
         return f"⏳ نوبت جاسوس تیم {team_name}"
 
     # GUESSING
-    clue_line = f"🔎 سرنخ: «{game.clue_word}» ({game.clue_count})" if game.clue_word else ""
+    star_note = "*" * game.clue_stars
+    clue_line = f"🔎 سرنخ: «{game.clue_word}{star_note}» ({game.clue_count})" if game.clue_word else ""
     progress = f"✅ حدس‌های درست: {game.correct_guesses_this_turn}/{game.clue_count}"
     return f"🎯 نوبت مامور تیم {team_name}\n{clue_line}\n{progress}"
 
