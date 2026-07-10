@@ -134,13 +134,14 @@ async def handle_clue_reply(message: Message, bot: Bot, db_conn: asyncpg.Pool) -
         await message.reply("❌ فرمت درست نیست. اول عدد، بعد کلمه‌ی سرنخ. مثلاً: 2 طبیعت")
         return
 
-    n, word = parsed
+    n, word, stars = parsed
     try:
-        game.set_clue_count(n, word)
+        game.set_clue_count(n, word, stars)
     except GameError as e:
         await message.reply(str(e))
         return
 
     await save_game(db_conn, game)
     await sync_board_message(bot, db_conn, game, move_to_bottom=False)
-    await message.reply(f"✅ سرنخ ثبت شد: «{word}» ({n}) — نوبت حدس‌زدنه!")
+    star_note = "*" * stars
+    await message.reply(f"✅ سرنخ ثبت شد: «{word}{star_note}» ({n}) — نوبت حدس‌زدنه!")
