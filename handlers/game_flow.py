@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import io
 
 import asyncpg
@@ -13,8 +14,8 @@ from aiogram import Bot
 from aiogram.types import BufferedInputFile, InputMediaPhoto
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
-from database.repository import save_game
-from game.state import Game, Team, Role
+from database.repository import save_game, load_game
+from game.state import Game, Team, Role, GameStatus
 from keyboards.board import build_board_rows, build_board_caption
 from keyboards.types import to_aiogram_markup
 from imaging.board_renderer import render_board, render_spymaster_board
@@ -65,6 +66,7 @@ def _build_group_render_kwargs(game: Game) -> dict:
         blue_guess_log=[tuple(x) for x in game.guess_log.get("blue", [])],
         clue_word=game.clue_word,
         clue_number=(game.clue_count if game.clue_count else None),
+        clue_stars=game.clue_stars,
         winner=winner,
         ended_by_assassin=game.ended_by_assassin,
         winner_players=winner_players,
@@ -80,6 +82,46 @@ def _build_spymaster_cards(game: Game) -> list[dict]:
         }
         for c in game.board
     ]
+
+
+async def _wait_and_send_spymaster_photo(
+    bot: Bot,
+    pool: asyncpg.Pool,
+    game_id: str,
+    user_id: int,
+    team_value: str,
+    interval: int = 10,
+    max_attempts: int = 180,  # سقفِ ۳۰ دقیقه (۱۸۰ × ۱۰ ثانیه)، فقط برای جلوگیری از حلقه‌ی ابدی
+) -> None:
+    """
+    وقتی فرستادن عکس اولیه‌ی جاسوس به‌خاطر نزدن /start شکست بخوره، این تابع
+    (به‌صورت پس‌زمینه، بدون قفل‌کردن بقیه‌ی ربات) هر ۱۰ ثانیه یه‌بار دوباره امتحان می‌کنه.
+    هر بار که موفق شد، آخرین وضعیت زنده‌ی بازی رو رندر و می‌فرسته (نه نسخه‌ی قدیمی).
+    """
+    for _ in range(max_attempts):
+        await asyncio.sleep(interval)
+
+        game = await load_game(pool, game_id)
+        if game is None or game.status == GameStatus.FINISHED:
+            return  # بازی پاک شده یا تموم شده، دیگه لازم نیست تلاش کنیم
+
+        spymaster_cards = _build_spymaster_cards(game)
+        sm_img = render_spymaster_board(spymaster_cards)
+        try:
+            msg = await bot.send_photo(
+                chat_id=user_id,
+                photo=_to_input_file(sm_img),
+                caption=f"🕵️ نقشه‌ی کامل بازی (تیم {team_value})",
+                protect_content=True,
+            )
+        except TelegramForbiddenError:
+            continue  # هنوز /start نزده، ۱۰ ثانیه‌ی بعد دوباره
+        except Exception:
+            continue  # هر خطای موقتی دیگه (مثلاً قطعی شبکه) - دوباره امتحان کن
+
+        game.spymaster_message_ids[str(user_id)] = msg.message_id
+        await save_game(pool, game)
+        return
 
 
 async def begin_game(bot: Bot, conn: asyncpg.Pool, game: Game) -> None:
@@ -119,10 +161,14 @@ async def begin_game(bot: Bot, conn: asyncpg.Pool, game: Game) -> None:
                 chat_id=sm.user_id,
                 photo=_to_input_file(sm_img),
                 caption=f"🕵️ نقشه‌ی کامل بازی (تیم {sm.team.value})",
+                protect_content=True,
             )
             game.spymaster_message_ids[str(sm.user_id)] = msg.message_id
         except TelegramForbiddenError:
             failed_names.append(sm.name)
+            asyncio.create_task(
+                _wait_and_send_spymaster_photo(bot, conn, game.game_id, sm.user_id, sm.team.value)
+            )
 
     if failed_names:
         names_list = "، ".join(failed_names)
@@ -130,7 +176,7 @@ async def begin_game(bot: Bot, conn: asyncpg.Pool, game: Game) -> None:
             chat_id=game.chat_id,
             text=(
                 f"⚠️ نتونستم به {names_list} پیام خصوصی بدم. "
-                "لطفاً اول یه بار به ربات پیام /start بدید تا نقشه‌ی رنگی رو براتون بفرستم."
+                "لطفاً اول یه بار به ربات پیام /start بدید — همین که زدید، خودش نقشه‌ی رنگی رو براتون می‌فرسته."
             ),
         )
 
