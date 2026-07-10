@@ -38,6 +38,7 @@ def render_board(
     blue_guess_log: list[tuple[str, str]],
     clue_word: str | None,
     clue_number: int | None,
+    clue_stars: int = 0,
     winner: str | None = None,
     ended_by_assassin: bool = False,
     winner_players: list[str] | None = None,
@@ -138,7 +139,8 @@ def render_board(
 
     clue_font = _font(theme.FONT_EXTRABOLD, 32)
     wcx, wcy = (word_box[0] + word_box[2]) // 2, (word_box[1] + word_box[3]) // 2
-    draw.text((wcx, wcy), clue_word or "", font=clue_font, fill=theme.TEXT_DARK, anchor="mm")
+    clue_display = (clue_word or "") + ("*" * clue_stars)
+    draw.text((wcx, wcy), clue_display, font=clue_font, fill=theme.TEXT_DARK, anchor="mm")
     ncx, ncy = (num_box[0] + num_box[2]) // 2, (num_box[1] + num_box[3]) // 2
     draw.text((ncx, ncy), str(clue_number) if clue_number is not None else "", font=clue_font, fill=theme.TEXT_DARK, anchor="mm")
 
