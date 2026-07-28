@@ -1,0 +1,827 @@
+[
+  {
+    "difficulty": "easy",
+    "words": [
+      "مداد",
+      "جنگل",
+      "شمال"
+    ],
+    "avoid": [
+      "چوب",
+      "درخت",
+      "کاغذ",
+      "گیلان",
+      "مازندران"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "ساعت",
+      "قطار",
+      "تاخیر"
+    ],
+    "avoid": [
+      "ایستگاه",
+      "سفر"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "عینک",
+      "آفتاب",
+      "ساحل"
+    ],
+    "avoid": [
+      "دریا",
+      "تابستان",
+      "شنا"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "چتر",
+      "باران",
+      "غم"
+    ],
+    "avoid": [
+      "ابر",
+      "هوا"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "شمع",
+      "تاریکی",
+      "تولد"
+    ],
+    "avoid": [
+      "نور",
+      "کیک",
+      "جشن"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "کلاغ",
+      "هوش",
+      "سیاه"
+    ],
+    "avoid": [
+      "پرنده"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "عقرب",
+      "نیش",
+      "برج"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "قناری",
+      "قفس",
+      "خواننده"
+    ],
+    "avoid": [
+      "پرنده"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "لاکپشت",
+      "آهسته",
+      "پوسته"
+    ],
+    "avoid": [
+      "دریا"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "یخ",
+      "قطب",
+      "سرما"
+    ],
+    "avoid": [
+      "برف"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "شتر",
+      "بیابان",
+      "صحرا"
+    ],
+    "avoid": [
+      "شن"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "پنگوئن",
+      "یخ",
+      "جنوب"
+    ],
+    "avoid": [
+      "برف"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "عنکبوت",
+      "تار",
+      "دیشب"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "کوسه",
+      "دندان",
+      "اقیانوس"
+    ],
+    "avoid": [
+      "ماهی",
+      "دریا",
+      "خطر"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "طوطی",
+      "تکرار",
+      "رنگارنگ"
+    ],
+    "avoid": [
+      "پرنده",
+      "جنگل"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "اسکناس",
+      "بانک",
+      "جیب"
+    ],
+    "avoid": [
+      "پول",
+      "خرید"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "کلید",
+      "قفل",
+      "راز"
+    ],
+    "avoid": [
+      "در",
+      "خانه",
+      "امنیت"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "آینه",
+      "تصویر",
+      "حقیقت"
+    ],
+    "avoid": [
+      "شیشه"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "سایه",
+      "غروب",
+      "خورشید"
+    ],
+    "avoid": [
+      "تاریکی",
+      "نور"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "بادکنک",
+      "باد",
+      "آسمان"
+    ],
+    "avoid": [
+      "تابستان"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "قطبنما",
+      "دریانورد",
+      "کشتی"
+    ],
+    "avoid": [
+      "نقشه",
+      "سفر"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "تلسکوپ",
+      "ستاره",
+      "فاصله"
+    ],
+    "avoid": [
+      "آسمان",
+      "نجوم"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "نمک",
+      "اشک",
+      "دریا"
+    ],
+    "avoid": [
+      "آب"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "زنجیر",
+      "زندان",
+      "آزادی"
+    ],
+    "avoid": [
+      "قفل"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "پروانه",
+      "تغییر",
+      "رنگارنگ"
+    ],
+    "avoid": [
+      "حشره",
+      "کرم"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "برف",
+      "سکوت",
+      "سفید"
+    ],
+    "avoid": [
+      "یخ"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "آتشفشان",
+      "خشم",
+      "دود"
+    ],
+    "avoid": [
+      "کوه",
+      "گدازه"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "نعل",
+      "اسب",
+      "شانس"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "گرگ",
+      "ماه",
+      "زوزه"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "جغد",
+      "دیشب",
+      "دانایی"
+    ],
+    "avoid": [
+      "پرنده",
+      "تاریکی"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "مورچه",
+      "تلاش",
+      "نظم"
+    ],
+    "avoid": [
+      "حشره"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "فلامینگو",
+      "صورتی",
+      "دریاچه"
+    ],
+    "avoid": [
+      "پرنده",
+      "آب"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "خفاش",
+      "غار",
+      "دیشب"
+    ],
+    "avoid": [
+      "تاریکی"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "ستاره",
+      "آرزو",
+      "آسمان"
+    ],
+    "avoid": [
+      "نور"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "پل",
+      "فاصله",
+      "رودخانه"
+    ],
+    "avoid": [
+      "عبور"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "ساعت",
+      "شن",
+      "صبر"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "قاصدک",
+      "آرزو",
+      "باد"
+    ],
+    "avoid": [
+      "گل",
+      "پرواز"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "رنگین",
+      "امید",
+      "باران"
+    ],
+    "avoid": [
+      "رنگ",
+      "آسمان"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "کرگدن",
+      "زره",
+      "قدرت"
+    ],
+    "avoid": [
+      "پوست"
+    ]
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "بوفالو",
+      "علف",
+      "دشت"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "easy",
+    "words": [
+      "ماهیگیر",
+      "تور",
+      "صبر"
+    ],
+    "avoid": [
+      "دریا",
+      "قایق"
+    ]
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "ساعت",
+      "صبر",
+      "قطار"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "کلاه",
+      "جادوگر",
+      "خرگوش"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "آینه",
+      "داستان",
+      "شاهزاده"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "برف",
+      "کادو",
+      "هدیه"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "گیتار",
+      "کنسرت",
+      "هیجان"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "دوچرخه",
+      "هوا",
+      "آزادی"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "کفش",
+      "کوه",
+      "خستگی"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "چای",
+      "صبحانه",
+      "گرما"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "پرچم",
+      "افتخار",
+      "کشور"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "مداد",
+      "نقاشی",
+      "کودک"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "دریا",
+      "تنها",
+      "سفر"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "کتاب",
+      "خیال",
+      "دنیا"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "آتش",
+      "گرما",
+      "خطر"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "برف",
+      "سرما",
+      "کوه"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "گل",
+      "عشق",
+      "بهار"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "ساعت",
+      "عجله",
+      "کار"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "پرنده",
+      "آزادی",
+      "پرواز"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "ماه",
+      "شاعر",
+      "آسمان"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "باران",
+      "عشق",
+      "خیابان"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "جنگل",
+      "سکوت",
+      "آرامش"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "دریا",
+      "طوفان",
+      "کشتی"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "کوه",
+      "صعود",
+      "قله"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "پارک",
+      "بازی",
+      "کودک"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "مدرسه",
+      "دوست",
+      "خاطره"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "قهوه",
+      "صبح",
+      "انرژی"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "موسیقی",
+      "احساس",
+      "رقص"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "آینه",
+      "زیبایی",
+      "غرور"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "ساعت",
+      "گذشته",
+      "خاطره"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "پنجره",
+      "دنیا",
+      "نور"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "چراغ",
+      "راه",
+      "امید"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "گربه",
+      "استقلال",
+      "آرامش"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "سگ",
+      "وفادار",
+      "دوست"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "اسب",
+      "سرعت",
+      "آزادی"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "شیر",
+      "شجاعت",
+      "قدرت"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "روباه",
+      "زرنگی",
+      "حیله"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "فیل",
+      "حافظه",
+      "بزرگ"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "خرس",
+      "خواب",
+      "کوه"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "زرافه",
+      "بلند",
+      "آفریقا"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "پروانه",
+      "زیبایی",
+      "کوتاه"
+    ],
+    "avoid": []
+  },
+  {
+    "difficulty": "medium",
+    "words": [
+      "ستاره",
+      "شهرت",
+      "درخشان"
+    ],
+    "avoid": []
+  }
+]
