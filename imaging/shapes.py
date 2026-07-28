@@ -6,7 +6,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -146,6 +146,56 @@ def add_dot_pattern(
     w, h = canvas.size
     layer = _dot_pattern_layer(w, h, spacing, dot_radius, opacity)
     canvas.alpha_composite(layer, (0, 0))
+
+
+@lru_cache(maxsize=64)
+def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(font_path, size, layout_engine=ImageFont.Layout.RAQM)
+
+
+def draw_bold_text(
+    canvas: Image.Image,
+    xy: tuple[float, float],
+    text: str,
+    font_path: str,
+    font_size: int,
+    fill,
+    anchor: str = "la",
+    stroke_width: int = 0,
+    stroke_fill=None,
+    supersample: int = 3,
+) -> None:
+    """
+    متن رو با سوپرسمپلینگ می‌کشه: توی یه لایه‌ی کوچیک با فونتِ چندبرابر بزرگ‌تر رسم
+    می‌شه، بعد با فیلترِ LANCZOS به اندازه‌ی واقعی کوچیک می‌شه. این‌طوری لبه‌ی حروف
+    نرم و شارپ می‌مونه، نه پیکسلی/دندونه‌دار (که رندرِ مستقیم در سایزهای کوچیک‌تر
+    گاهی باهاش پیش میاد).
+    stroke_fill اگه ندیم، همون fill استفاده می‌شه (برای حسِ بولدِ هم‌رنگ)؛ اگه رنگِ
+    جدا بدیم (مثلِ لاگِ حدس)، حاشیه‌ی متن اون رنگ می‌شه (برای کنتراست روی پس‌زمینه).
+    """
+    if not text:
+        return
+    font = _load_font(font_path, font_size)
+    tmp_draw = ImageDraw.Draw(canvas)
+    bbox = tmp_draw.textbbox(xy, text, font=font, anchor=anchor, stroke_width=stroke_width)
+    pad = 6
+    x0, y0, x1, y1 = bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad
+    w, h = x1 - x0, y1 - y0
+    if w <= 0 or h <= 0:
+        return
+
+    big_font = _load_font(font_path, font_size * supersample)
+    layer = Image.new("RGBA", (w * supersample, h * supersample), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    local_x = (xy[0] - x0) * supersample
+    local_y = (xy[1] - y0) * supersample
+    ld.text(
+        (local_x, local_y), text, font=big_font, fill=fill, anchor=anchor,
+        stroke_width=stroke_width * supersample if stroke_width else 0,
+        stroke_fill=(stroke_fill or fill) if stroke_width else None,
+    )
+    small = layer.resize((w, h), Image.LANCZOS)
+    canvas.alpha_composite(small, (int(x0), int(y0)))
 
 
 def draw_shadow(
