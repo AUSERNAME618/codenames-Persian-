@@ -10,7 +10,7 @@ from aiogram import Router, Bot, F
 from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 
-from config import WORDS_PATH
+from config import WORDS_PATH, WORD_CLUSTERS_PATH
 from database.repository import save_game, load_game, delete_game
 from game.state import Game, GameError, Role, Team
 from keyboards.lobby import build_lobby_rows
@@ -22,6 +22,11 @@ router = Router(name="lobby")
 
 def _load_word_pool() -> list[str]:
     with open(WORDS_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_word_clusters() -> list[dict]:
+    with open(WORD_CLUSTERS_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -82,6 +87,18 @@ async def handle_lobby_callback(callback: CallbackQuery, bot: Bot, db_conn: asyn
         await callback.answer(f"حالت {game.team_size_mode} نفره شد.")
         return
 
+    # ---------- تغییر سطح دشواری (فقط سازنده) ----------
+    if action == "cycle_difficulty":
+        if user_id != game.host_id:
+            await callback.answer("فقط سازنده‌ی بازی می‌تونه سطح دشواری رو عوض کنه.", show_alert=True)
+            return
+        game.cycle_difficulty()
+        await save_game(conn, game)
+        await _refresh_lobby_message(bot, game)
+        from config import DIFFICULTY_LABELS_FA
+        await callback.answer(f"سطح دشواری: {DIFFICULTY_LABELS_FA.get(game.difficulty, game.difficulty)}")
+        return
+
     # ---------- شروع بازی (فقط سازنده) ----------
     if action == "start":
         if user_id != game.host_id:
@@ -91,7 +108,8 @@ async def handle_lobby_callback(callback: CallbackQuery, bot: Bot, db_conn: asyn
             await callback.answer("نفرات کافی نیست! هر تیم باید حداقل یه جاسوس و یه مامور داشته باشه.", show_alert=True)
             return
         word_pool = _load_word_pool()
-        game.start_game(word_pool)
+        clusters = _load_word_clusters() if game.difficulty != "hard" else []
+        game.start_game(word_pool, clusters)
         await save_game(conn, game)
         await begin_game(bot, conn, game)
         await callback.answer("بازی شروع شد!")
