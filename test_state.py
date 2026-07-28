@@ -169,6 +169,63 @@ def test_guess_log_and_round():
     print("\n🎉 تست‌های guess_log و round_number هم رد شدن.")
 
 
+def test_difficulty_modes():
+    from collections import Counter
+    words = load_words()
+    with open("data/word_clusters.json", encoding="utf-8") as f:
+        clusters = json.load(f)
+
+    # ---------- hard: نباید هیچ سوگیری‌ای نسبت به قبل ایجاد شده باشه ----------
+    # رنگِ کارتِ جایگاهِ ۰ (یه جایگاهِ فیزیکیِ ثابت) رو روی ۱۵۰۰ بازیِ سخت می‌شماریم؛
+    # اگه پیاده‌سازی سوگیری‌دار بشه (مثلاً به‌خاطرِ shuffle اشتباه)، این توزیع به‌وضوح
+    # از نسبتِ واقعیِ ۹:۸:۷:۱ منحرف می‌شه.
+    N = 1500
+    counts = Counter()
+    for i in range(N):
+        g = Game(game_id=f"stat{i}", chat_id=1, host_id=1, team_size_mode=4)
+        g.difficulty = "hard"
+        g.join_slot(1, "علی", Team.BLUE, Role.OPERATIVE, slot=0)
+        g.join_slot(2, "حسین", Team.BLUE, Role.SPYMASTER, slot=0)
+        g.join_slot(3, "مریم", Team.RED, Role.OPERATIVE, slot=0)
+        g.join_slot(4, "نگار", Team.RED, Role.SPYMASTER, slot=0)
+        g.start_game(words, clusters)
+        counts[g.board[0].color.value] += 1
+
+    assassin_ratio = counts["assassin"] / N
+    neutral_ratio = counts["neutral"] / N
+    # با ۱ کارتِ قاتل از ۲۵، انتظار ~۴٪ با کمی نوسانِ آماری؛ بازه‌ی وسیع برای جلوگیری
+    # از فِیلِ کاذب، ولی به‌قدرِ کافی تنگ که هر سوگیریِ واقعی رو بگیره
+    assert_true(0.015 < assassin_ratio < 0.075,
+                f"hard: نسبتِ قاتل در جایگاهِ ۰ باید نزدیکِ ۴٪ باشه (رندومِ واقعی)، شد {assassin_ratio:.1%}")
+    assert_true(0.20 < neutral_ratio < 0.36,
+                f"hard: نسبتِ خنثی در جایگاهِ ۰ باید نزدیکِ ۲۸٪ باشه، شد {neutral_ratio:.1%}")
+
+    # ---------- easy: هر خوشه‌ای که کاملاً روی برد باشه، باید هر کدوم فقط رنگِ یه تیم رو بگیره ----------
+    easy_clusters = [c for c in clusters if c["difficulty"] == "easy"]
+    checked_at_least_one = False
+    for i in range(25):
+        g = Game(game_id=f"easy{i}", chat_id=1, host_id=1, team_size_mode=4)
+        g.difficulty = "easy"
+        g.join_slot(1, "علی", Team.BLUE, Role.OPERATIVE, slot=0)
+        g.join_slot(2, "حسین", Team.BLUE, Role.SPYMASTER, slot=0)
+        g.join_slot(3, "مریم", Team.RED, Role.OPERATIVE, slot=0)
+        g.join_slot(4, "نگار", Team.RED, Role.SPYMASTER, slot=0)
+        g.start_game(words, clusters)
+        word_to_color = {c.word: c.color.value for c in g.board}
+        board_words = set(word_to_color.keys())
+        for cluster in easy_clusters:
+            cwords = set(cluster["words"])
+            if cwords.issubset(board_words):
+                cluster_colors = {word_to_color[w] for w in cwords}
+                assert_true(len(cluster_colors) == 1 and next(iter(cluster_colors)) in ("red", "blue"),
+                            f"easy: خوشه‌ی {cluster['words']} باید کاملاً رنگِ یه تیم بگیره، شد {cluster_colors}")
+                checked_at_least_one = True
+    assert_true(checked_at_least_one, "easy: حداقل یه خوشه باید توی این ۲۵ بازی کامل روی برد ظاهر شده باشه")
+
+    print("\n🎉 تست‌های سطحِ دشواری (hard بدونِ سوگیری، easy با خوشه‌بندیِ درست) رد شدن.")
+
+
 if __name__ == "__main__":
     main()
     test_guess_log_and_round()
+    test_difficulty_modes()
