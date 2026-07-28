@@ -5,15 +5,11 @@ side='right' -> اسم تیم گوشه‌ی بالا-راست، شمارنده�
 """
 from __future__ import annotations
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from imaging import theme
-from imaging.shapes import paste_rounded_solid, paste_rounded_gradient
+from imaging.shapes import paste_rounded_solid, paste_rounded_gradient, draw_bold_text
 from imaging.text_safe import sanitize_for_font
-
-
-def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.RAQM)
 
 
 def draw_team_panel(
@@ -32,15 +28,10 @@ def draw_team_panel(
         paste_rounded_gradient(canvas, box, panel_gradient[0], panel_gradient[1], theme.PANEL_RADIUS)
     else:
         paste_rounded_solid(canvas, box, panel_color, radius=theme.PANEL_RADIUS)
-    draw = ImageDraw.Draw(canvas)
     pad = 30
     center_x = (x0 + x1) // 2
 
-    name_font = _font(theme.FONT_BLACK, 46)
-    count_font = _font(theme.FONT_BLACK, 36)
-    label_font = _font(theme.FONT_BLACK, 38)
-    name_list_font = _font(theme.FONT_BLACK, 30)
-
+    name_size, count_size, label_size, name_list_size = 46, 36, 38, 30
     label_color = theme.BLACK
 
     # --- اسم تیم + بج شمارنده در دو گوشه‌ی بالا (قرینه بر اساس side) ---
@@ -48,37 +39,37 @@ def draw_team_panel(
     badge_y0 = y0 + pad
 
     if side == "left":
-        draw.text((x0 + pad, y0 + pad), team_label, font=name_font, fill=theme.WHITE, anchor="la")
+        draw_bold_text(canvas, (x0 + pad, y0 + pad), team_label, theme.FONT_BLACK, name_size, theme.WHITE, anchor="la")
         badge_x0 = x1 - pad - badge_size
     else:
-        draw.text((x1 - pad, y0 + pad), team_label, font=name_font, fill=theme.WHITE, anchor="ra")
+        draw_bold_text(canvas, (x1 - pad, y0 + pad), team_label, theme.FONT_BLACK, name_size, theme.WHITE, anchor="ra")
         badge_x0 = x0 + pad
 
     badge_box = (badge_x0, badge_y0, badge_x0 + badge_size, badge_y0 + badge_size)
     paste_rounded_solid(canvas, badge_box, theme.WHITE, radius=badge_size // 2, with_shadow=True)
     bcx, bcy = badge_x0 + badge_size // 2, badge_y0 + badge_size // 2
-    draw.text((bcx, bcy), str(cards_remaining), font=count_font, fill=panel_color, anchor="mm")
+    draw_bold_text(canvas, (bcx, bcy), str(cards_remaining), theme.FONT_BLACK, count_size, panel_color, anchor="mm")
 
     y = y0 + pad + 96
 
     # --- مامورین حدس ---
-    draw.text((center_x, y), "مامورین حدس", font=label_font, fill=label_color, anchor="ma")
+    draw_bold_text(canvas, (center_x, y), "مامورین حدس", theme.FONT_BLACK, label_size, label_color, anchor="ma")
     y += 60
     if operative_names:
         for raw_name in operative_names[:3]:
             name = sanitize_for_font(raw_name, theme.FONT_BLACK) or "-"
-            draw.text((center_x, y), name, font=name_list_font, fill=theme.WHITE, anchor="ma")
+            draw_bold_text(canvas, (center_x, y), name, theme.FONT_BLACK, name_list_size, theme.WHITE, anchor="ma")
             y += 44
     else:
-        draw.text((center_x, y), "-", font=name_list_font, fill=theme.WHITE, anchor="ma")
+        draw_bold_text(canvas, (center_x, y), "-", theme.FONT_BLACK, name_list_size, theme.WHITE, anchor="ma")
         y += 44
     y += 26
 
     # --- جاسوس ---
-    draw.text((center_x, y), "جاسوس", font=label_font, fill=label_color, anchor="ma")
+    draw_bold_text(canvas, (center_x, y), "جاسوس", theme.FONT_BLACK, label_size, label_color, anchor="ma")
     y += 60
     spymaster_clean = sanitize_for_font(spymaster_name, theme.FONT_BLACK) if spymaster_name else None
-    draw.text((center_x, y), spymaster_clean or "-", font=name_list_font, fill=theme.WHITE, anchor="ma")
+    draw_bold_text(canvas, (center_x, y), spymaster_clean or "-", theme.FONT_BLACK, name_list_size, theme.WHITE, anchor="ma")
 
 
 def draw_guess_log_below_panel(
@@ -97,7 +88,7 @@ def draw_guess_log_below_panel(
     """
     x0, _, x1, y1 = panel_box
     center_x = (x0 + x1) // 2
-    font = _font(theme.FONT_BLACK, 30)
+    font_size = 30
     line_h = 42
     y = y1 + 22
     max_y = canvas_height - 18
@@ -109,14 +100,13 @@ def draw_guess_log_below_panel(
     recent = guess_log[-available_lines:]
     ordered = list(reversed(recent))  # جدیدترین اول (بالا)
 
-    draw = ImageDraw.Draw(canvas)
     for player_name, word in ordered:
         clean_name = sanitize_for_font(player_name, theme.FONT_BLACK)
         clean_word = sanitize_for_font(word, theme.FONT_BLACK)
         text = f"({clean_name}:{clean_word})"
-        draw.text(
-            (center_x, y), text, font=font,
-            fill=theme.LOG_TEXT_COLOR, stroke_width=2, stroke_fill=theme.LOG_STROKE_COLOR,
-            anchor="ma",
+        draw_bold_text(
+            canvas, (center_x, y), text, theme.FONT_BLACK, font_size,
+            theme.LOG_TEXT_COLOR, anchor="ma",
+            stroke_width=3, stroke_fill=theme.LOG_STROKE_COLOR,
         )
         y += line_h
