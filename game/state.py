@@ -105,6 +105,7 @@ class Game:
 
         self.status: GameStatus = GameStatus.LOBBY
         self.players: dict[int, Player] = {}  # user_id -> Player
+        self.difficulty: str = "hard"  # "hard" | "medium" | "easy"
 
         self.board: list[Card] = []
         self.starting_team: Optional[Team] = None
@@ -195,6 +196,12 @@ class Game:
         for uid in to_remove:
             del self.players[uid]
 
+    def cycle_difficulty(self) -> None:
+        """دکمه‌ی «تغییر سطح»: سخت -> متوسط -> آسون -> سخت ..."""
+        from config import DIFFICULTY_CYCLE
+        idx = DIFFICULTY_CYCLE.index(self.difficulty)
+        self.difficulty = DIFFICULTY_CYCLE[(idx + 1) % len(DIFFICULTY_CYCLE)]
+
     def is_ready_to_start(self) -> bool:
         """هر دو تیم باید حداقل یک اسپای‌مستر و حداقل یک مامور داشته باشند."""
         for team in (Team.RED, Team.BLUE):
@@ -210,32 +217,44 @@ class Game:
 
     # ---------- شروع بازی ----------
 
-    def start_game(self, word_pool: list[str]) -> None:
+    def start_game(self, word_pool: list[str], clusters: Optional[list[dict]] = None) -> None:
         if not self.is_ready_to_start():
             raise GameError("نفرات کافی نیست.")
 
         from config import (
             BOARD_SIZE, CARDS_PER_STARTING_TEAM, CARDS_PER_OTHER_TEAM,
-            CARDS_NEUTRAL, CARDS_ASSASSIN,
+            CARDS_NEUTRAL, CARDS_ASSASSIN, CLUSTER_COVERAGE,
         )
+        from game.board_builder import build_board
 
-        words = random.sample(word_pool, BOARD_SIZE)
         self.starting_team = random.choice([Team.RED, Team.BLUE])
         other_team = Team.BLUE if self.starting_team == Team.RED else Team.RED
 
-        colors = (
+        words = build_board(
+            word_pool, clusters or [],
+            CARDS_PER_STARTING_TEAM, CARDS_PER_OTHER_TEAM, CARDS_NEUTRAL, CARDS_ASSASSIN,
+            difficulty=self.difficulty, cluster_coverage=CLUSTER_COVERAGE,
+        )
+        assert len(words) == BOARD_SIZE
+
+        # board_builder کلمات رو به ترتیبِ بلوکیِ معنادار برمی‌گردونه: اول کلماتِ
+        # تیمِ شروع‌کننده، بعد تیمِ دیگه، بعد خنثی، بعد قاتل. پس رنگ‌ها باید دقیقاً با
+        # همین ترتیب (بدونِ شافلِ جداگانه) جفت بشن، وگرنه تخصیصِ خوشه‌ها به تیمِ درست
+        # از بین می‌ره. رندوم‌بودنِ *جای* کارت‌ها روی برد رو با شافل‌کردنِ خودِ جفت‌های
+        # (کلمه، رنگ) - نه رنگ‌های تنها - تأمین می‌کنیم.
+        colors_in_order = (
             [self.starting_team] * CARDS_PER_STARTING_TEAM
             + [other_team] * CARDS_PER_OTHER_TEAM
             + [CardColor.NEUTRAL] * CARDS_NEUTRAL
             + [CardColor.ASSASSIN] * CARDS_ASSASSIN
         )
-        # چون starting_team و other_team از نوع Team هستند نه CardColor، تبدیل می‌کنیم
-        colors = [
-            CardColor(c.value) if isinstance(c, Team) else c for c in colors
+        colors_in_order = [
+            CardColor(c.value) if isinstance(c, Team) else c for c in colors_in_order
         ]
-        random.shuffle(colors)
+        pairs = list(zip(words, colors_in_order))
+        random.shuffle(pairs)
 
-        self.board = [Card(word=w, color=c) for w, c in zip(words, colors)]
+        self.board = [Card(word=w, color=c) for w, c in pairs]
         self.current_turn = self.starting_team
         self.status = GameStatus.AWAITING_CLUE
         self.clue_count = 0
@@ -349,6 +368,7 @@ class Game:
             "chat_id": self.chat_id,
             "host_id": self.host_id,
             "team_size_mode": self.team_size_mode,
+            "difficulty": self.difficulty,
             "status": self.status.value,
             "players": [p.to_dict() for p in self.players.values()],
             "board": [c.to_dict() for c in self.board],
@@ -375,6 +395,7 @@ class Game:
             team_size_mode=d["team_size_mode"],
         )
         g.status = GameStatus(d["status"])
+        g.difficulty = d.get("difficulty", "hard")
         g.players = {p["user_id"]: Player.from_dict(p) for p in d["players"]}
         g.board = [Card.from_dict(c) for c in d["board"]]
         g.starting_team = Team(d["starting_team"]) if d["starting_team"] else None
