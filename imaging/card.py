@@ -18,6 +18,7 @@ from imaging.shapes import (
     paste_rounded_gradient,
     paste_rounded_solid,
     draw_shadow,
+    draw_bold_text,
     lighten_hex,
 )
 from imaging.text_safe import sanitize_for_font
@@ -97,7 +98,6 @@ def draw_card_face(canvas: Image.Image, box: tuple[int, int, int, int], word: st
     label_h = int(h * 0.36)
     label_box = (x0 + label_margin_x, y1 - label_h - 14, x1 - label_margin_x, y1 - 14)
 
-    draw = ImageDraw.Draw(canvas)
     if state == "assassin":
         text_color = theme.TEXT_WHITE
     else:
@@ -119,7 +119,7 @@ def draw_card_face(canvas: Image.Image, box: tuple[int, int, int, int], word: st
     while font.getlength(safe_word) > max_w and font.size > 16:
         font = ImageFont.truetype(font.path, font.size - 2, layout_engine=ImageFont.Layout.RAQM)
 
-    draw.text((cx, cy), safe_word, font=font, fill=text_color, anchor="mm")
+    draw_bold_text(canvas, (cx, cy), safe_word, theme.FONT_BLACK, font.size, text_color, anchor="mm")
 
 
 def draw_card(canvas: Image.Image, box: tuple[int, int, int, int], word: str, state: str) -> None:
