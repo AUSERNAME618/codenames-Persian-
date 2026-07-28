@@ -10,6 +10,16 @@ DATABASE_URL = os.getenv("DATABASE_URL", "PUT_YOUR_NEON_CONNECTION_STRING_HERE")
 # مسیر فایل لیست کلمات (JSON آرایه‌ای از رشته‌های فارسی)
 WORDS_PATH = os.getenv("WORDS_PATH", "data/words_fa.json")
 
+# مسیر فایلِ خوشه‌های کلمه‌ای (برای گیم‌مودِ آسون/متوسط)
+WORD_CLUSTERS_PATH = os.getenv("WORD_CLUSTERS_PATH", "data/word_clusters.json")
+
+# ترتیب چرخشی سطح دشواری با دکمه‌ی «تغییر سطح»
+DIFFICULTY_CYCLE = ["hard", "medium", "easy"]
+DIFFICULTY_LABELS_FA = {"hard": "سخت", "medium": "متوسط", "easy": "آسون"}
+
+# چند درصد از کارت‌های هر تیم سعی می‌شه از خوشه‌ها پر بشه (بقیه رندومِ خالص)
+CLUSTER_COVERAGE = 0.7
+
 # تعداد کلمات روی صفحه (همیشه ۵×۵ = ۲۵)
 BOARD_SIZE = 25
 
