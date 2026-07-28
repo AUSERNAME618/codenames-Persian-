@@ -18,6 +18,7 @@ from keyboards.types import ButtonSpec, Rows
 
 _EMPTY_OPERATIVE = "🤵 خالی"
 _EMPTY_SPYMASTER = "🕵️ خالی"
+_DIFFICULTY_EMOJI = {"hard": "🔴", "medium": "🟡", "easy": "🟢"}
 
 
 def _find_player(game: Game, team: Team, role: Role, slot: int):
@@ -117,6 +118,19 @@ def build_lobby_rows(game: Game) -> Rows:
                 ),
             ]
         )
+
+    # ردیف سطحِ دشواری (چرخشی: سخت -> متوسط -> آسون)
+    from config import DIFFICULTY_LABELS_FA
+    diff_label = DIFFICULTY_LABELS_FA.get(game.difficulty, game.difficulty)
+    diff_emoji = _DIFFICULTY_EMOJI.get(game.difficulty, "")
+    rows.append(
+        [
+            ButtonSpec(
+                text=f"سطح: {diff_emoji} {diff_label} (برای تغییر بزن)",
+                callback_data=f"lobby:{gid}:cycle_difficulty",
+            ),
+        ]
+    )
 
     # ردیف آخر: چپ=تغییر نفرات، وسط=شروع بازی، راست=خروج
     rows.append(
