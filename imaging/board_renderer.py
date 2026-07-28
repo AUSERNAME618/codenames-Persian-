@@ -9,10 +9,10 @@
 """
 from __future__ import annotations
 
-from PIL import ImageDraw, ImageFont
+from PIL import ImageFont
 
 from imaging import theme
-from imaging.shapes import diagonal_gradient, paste_rounded_solid, paste_rounded_gradient, hex_to_rgb, add_soft_vignette, add_dot_pattern
+from imaging.shapes import diagonal_gradient, paste_rounded_solid, paste_rounded_gradient, hex_to_rgb, add_soft_vignette, add_dot_pattern, draw_bold_text
 from imaging.card import draw_card_shadow, draw_card_face, draw_guessed_mark
 from imaging.panel import draw_team_panel, draw_guess_log_below_panel
 from imaging.text_safe import sanitize_for_font
@@ -75,27 +75,23 @@ def render_board(
     canvas = diagonal_gradient((canvas_w, canvas_h), bg[0], bg[1]).convert("RGBA")
     add_soft_vignette(canvas, strength=16)
     add_dot_pattern(canvas)
-    draw = ImageDraw.Draw(canvas)
 
     # --- بالای تصویر: یا شماره‌ی راند، یا بنرِ برنده ---
     if winner is not None:
-        banner_font = _font(theme.FONT_BLACK, 68)
-        draw.text(
-            (canvas_w // 2, 20),
+        draw_bold_text(
+            canvas, (canvas_w // 2, 20),
             f"تیم {_TEAM_FA[winner]} برنده شد",
-            font=banner_font, fill=theme.WHITE, anchor="ma",
+            theme.FONT_BLACK, 68, theme.WHITE, anchor="ma",
         )
         if winner_players:
-            names_font = _font(theme.FONT_BLACK, 34)
             names_text = sanitize_for_font("  ،  ".join(winner_players), theme.FONT_BLACK)
-            draw.text(
-                (canvas_w // 2, 104),
+            draw_bold_text(
+                canvas, (canvas_w // 2, 104),
                 names_text,
-                font=names_font, fill=theme.WHITE, anchor="ma",
+                theme.FONT_BLACK, 34, theme.WHITE, anchor="ma",
             )
     else:
-        round_font = _font(theme.FONT_BLACK, 58)
-        draw.text((canvas_w // 2, 26), f"راند {round_number}", font=round_font, fill=theme.WHITE, anchor="ma")
+        draw_bold_text(canvas, (canvas_w // 2, 26), f"راند {round_number}", theme.FONT_BLACK, 58, theme.WHITE, anchor="ma")
 
     # --- محاسبه‌ی محل پنل‌ها و گرید ---
     blue_box = (outer, theme.MARGIN_TOP, outer + panel_w, theme.MARGIN_TOP + grid_h)
@@ -156,11 +152,10 @@ def render_board(
     max_word_w = word_w - 32
     while clue_font.getlength(clue_display) > max_word_w and clue_font.size > 20:
         clue_font = _font(theme.FONT_BLACK, clue_font.size - 2)
-    draw.text((wcx, wcy), clue_display, font=clue_font, fill=theme.TEXT_DARK, anchor="mm")
+    draw_bold_text(canvas, (wcx, wcy), clue_display, theme.FONT_BLACK, clue_font.size, theme.TEXT_DARK, anchor="mm")
 
-    num_font = _font(theme.FONT_BLACK, 46)
     ncx, ncy = (num_box[0] + num_box[2]) // 2, (num_box[1] + num_box[3]) // 2
-    draw.text((ncx, ncy), str(clue_number) if clue_number is not None else "", font=num_font, fill=theme.TEXT_DARK, anchor="mm")
+    draw_bold_text(canvas, (ncx, ncy), str(clue_number) if clue_number is not None else "", theme.FONT_BLACK, 46, theme.TEXT_DARK, anchor="mm")
 
     return canvas.convert("RGB")
 
