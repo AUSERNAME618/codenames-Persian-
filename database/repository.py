@@ -66,3 +66,27 @@ async def delete_game(pool: asyncpg.Pool, game_id: str) -> None:
     """بازی را کامل حذف می‌کند (مثلاً وقتی هاست دکمه‌ی «خروج» را می‌زند)."""
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM games WHERE game_id = $1", game_id)
+
+
+async def delete_stale_lobbies(pool: asyncpg.Pool, older_than_hours: int = 24) -> int:
+    """
+    لابی‌هایی که هنوز توی مرحله‌ی lobby موندن (هیچ‌وقت بازی شروع نشده) و مدت‌هاست
+    (پیش‌فرض ۲۴ ساعت) آپدیت نشدن رو پاک می‌کنه - برای نظافتِ دیتابیس از بازی‌های
+    نیمه‌کاره‌ای که بچه‌ها ولش کردن. توجه: طبقِ ایندکسِ chat_id، این کار روی سرعتِ
+    کوئری‌های معمولی اثر نداشت (کوئری‌ها از قبل ایندکس‌شده بودن)، صرفاً نظافته.
+    خروجی: تعداد ردیف‌های حذف‌شده.
+    """
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            DELETE FROM games
+            WHERE status = 'lobby'
+              AND updated_at < NOW() - ($1 || ' hours')::interval
+            """,
+            str(older_than_hours),
+        )
+    # نتیجه‌ی execute یه رشته مثلِ "DELETE 5"ه؛ عددش رو استخراج می‌کنیم
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError):
+        return 0
