@@ -36,26 +36,39 @@ def darken_hex(hex_color: str, factor: float) -> str:
     return rgb_to_hex((max(r, 0), max(g, 0), max(b, 0)))
 
 
+_GRADIENT_COMPUTE_SCALE = 16  # محاسبه در ۱/۱۶ رزولوشن، بعد بزرگ‌نمایی؛ چون گرادیان خیلی
+                              # نرم و کم‌فرکانسه، این کارِ numpy رو ~۲۵۰ برابر سبک‌تر می‌کنه
+                              # بدونِ هیچ افتِ محسوسِ کیفیت (bottleneck اصلیِ رندرِ سرد بود)
+
+
 @lru_cache(maxsize=128)
 def diagonal_gradient(size: tuple[int, int], color_start: str, color_end: str) -> Image.Image:
     """یه گرادیان مورب (از گوشه‌ی بالا-چپ به پایین-راست) می‌سازه.
     نتیجه کش می‌شه چون خیلی از شکل‌ها (مثلاً همه‌ی کارت‌های یه رنگ، یا لیبلِ سفیدِ
     همه‌ی کارت‌ها) دقیقاً همون اندازه و همون دو رنگ رو دارن - این‌طوری محاسبه‌ی
-    numpy فقط یه‌بار به‌ازای هر ترکیبِ اندازه/رنگ انجام می‌شه، نه به‌ازای هر کارت."""
+    numpy فقط یه‌بار به‌ازای هر ترکیبِ اندازه/رنگ انجام می‌شه، نه به‌ازای هر کارت.
+    محاسبه‌ی اصلی توی رزولوشنِ پایین انجام می‌شه (چون گرادیان صاف/کم‌فرکانسه) و در
+    آخر با resize بزرگ می‌شه - این باعث می‌شه رندرِ سرد (بعدِ هر ری‌استارتِ سرور)
+    چندین برابر سریع‌تر بشه."""
     w, h = size
+    small_w = max(8, round(w / _GRADIENT_COMPUTE_SCALE))
+    small_h = max(8, round(h / _GRADIENT_COMPUTE_SCALE))
+
     start = np.array(hex_to_rgb(color_start), dtype=np.float32)
     end = np.array(hex_to_rgb(color_end), dtype=np.float32)
 
-    # وزنِ هر پیکسل بر اساس فاصله‌ی مورب نرمال‌شده (۰ تا ۱)
-    x = np.linspace(0, 1, w)
-    y = np.linspace(0, 1, h)
+    x = np.linspace(0, 1, small_w)
+    y = np.linspace(0, 1, small_h)
     xx, yy = np.meshgrid(x, y)
     t = (xx + yy) / 2.0
     t = t[..., np.newaxis]
 
     arr = start * (1 - t) + end * t
     arr = arr.astype(np.uint8)
-    return Image.fromarray(arr, mode="RGB")
+    small_img = Image.fromarray(arr, mode="RGB")
+    if (small_w, small_h) == (w, h):
+        return small_img
+    return small_img.resize((w, h), Image.BILINEAR)
 
 
 @lru_cache(maxsize=64)
@@ -67,10 +80,13 @@ def rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
     return mask
 
 
+@lru_cache(maxsize=64)
 def rounded_gradient_patch(
     size: tuple[int, int], color_start: str, color_end: str, radius: int
 ) -> Image.Image:
-    """یه پچ RGBA گردگوشه با گرادیان مورب می‌سازه (برای پیست‌کردن روی کانواس اصلی)."""
+    """یه پچ RGBA گردگوشه با گرادیان مورب می‌سازه (برای پیست‌کردن روی کانواس اصلی).
+    خودِ نتیجه (نه فقط گرادیانِ زیرینش) کش می‌شه، چون تبدیلِ RGBA + ماسک‌گذاری هم
+    هزینه داره و برای مثلاً همه‌ی کارت‌های «فاش‌نشده» دقیقاً یکسانه."""
     grad = diagonal_gradient(size, color_start, color_end).convert("RGBA")
     mask = rounded_mask(size, radius)
     grad.putalpha(mask)
@@ -80,9 +96,14 @@ def rounded_gradient_patch(
 @lru_cache(maxsize=8)
 def _vignette_layers(w: int, h: int, strength: int) -> tuple[Image.Image, Image.Image]:
     """محاسبه‌ی لایه‌های وینیت فقط به اندازه‌ی تصویر بستگی داره (نه به رنگِ پس‌زمینه)،
-    پس کش می‌شه تا هر رندر دوباره از صفر محاسبه نشه."""
-    x = np.linspace(-1, 1, w)
-    y = np.linspace(-1, 1, h)
+    پس کش می‌شه تا هر رندر دوباره از صفر محاسبه نشه. مثلِ diagonal_gradient، محاسبه‌ی
+    اصلی توی رزولوشنِ پایین انجام می‌شه (وینیت هم ذاتاً خیلی نرم/محوئه) و در آخر با
+    resize بزرگ می‌شه."""
+    small_w = max(8, round(w / _GRADIENT_COMPUTE_SCALE))
+    small_h = max(8, round(h / _GRADIENT_COMPUTE_SCALE))
+
+    x = np.linspace(-1, 1, small_w)
+    y = np.linspace(-1, 1, small_h)
     xx, yy = np.meshgrid(x, y)
 
     highlight_dist = np.sqrt(xx**2 + (yy + 0.35) ** 2)
@@ -92,14 +113,16 @@ def _vignette_layers(w: int, h: int, strength: int) -> tuple[Image.Image, Image.
     vignette = np.clip(corner_dist - 0.55, 0, 1)
 
     white_alpha = (highlight * strength).astype(np.uint8)
-    white_layer = Image.new("RGBA", (w, h), (255, 255, 255, 0))
-    white_layer.putalpha(Image.fromarray(white_alpha, mode="L"))
+    white_small = Image.new("RGBA", (small_w, small_h), (255, 255, 255, 0))
+    white_small.putalpha(Image.fromarray(white_alpha, mode="L"))
 
     black_alpha = np.clip(vignette * strength * 1.3, 0, 255).astype(np.uint8)
-    black_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    black_layer.putalpha(Image.fromarray(black_alpha, mode="L"))
+    black_small = Image.new("RGBA", (small_w, small_h), (0, 0, 0, 0))
+    black_small.putalpha(Image.fromarray(black_alpha, mode="L"))
 
-    return white_layer, black_layer
+    if (small_w, small_h) == (w, h):
+        return white_small, black_small
+    return white_small.resize((w, h), Image.BILINEAR), black_small.resize((w, h), Image.BILINEAR)
 
 
 def add_soft_vignette(canvas: Image.Image, strength: int = 16) -> None:
@@ -198,6 +221,20 @@ def draw_bold_text(
     canvas.alpha_composite(small, (int(x0), int(y0)))
 
 
+@lru_cache(maxsize=32)
+def _blurred_shadow_shape(w: int, h: int, radius: int, blur: int, opacity: int) -> Image.Image:
+    """شکلِ سایه‌ی بلورشده - فقط به اندازه/شعاع/بلور/شفافیت بستگی داره، نه به موقعیت.
+    کش می‌شه چون مثلاً همه‌ی ۲۵ کارتِ گرید دقیقاً همین سایه رو دارن (فقط جاشون فرق
+    می‌کنه) - این‌طوری Gaussian blur فقط یه‌بار محاسبه می‌شه، نه ۲۵ بار."""
+    pad = blur * 3
+    shadow_layer = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
+    sdraw = ImageDraw.Draw(shadow_layer)
+    sdraw.rounded_rectangle(
+        [pad, pad, pad + w, pad + h], radius=radius, fill=(0, 0, 0, opacity)
+    )
+    return shadow_layer.filter(ImageFilter.GaussianBlur(blur))
+
+
 def draw_shadow(
     canvas: Image.Image,
     box: tuple[int, int, int, int],
@@ -216,12 +253,7 @@ def draw_shadow(
     w, h = x1 - x0, y1 - y0
     pad = blur * 3
 
-    shadow_layer = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow_layer)
-    sdraw.rounded_rectangle(
-        [pad, pad, pad + w, pad + h], radius=radius, fill=(0, 0, 0, opacity)
-    )
-    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(blur))
+    shadow_layer = _blurred_shadow_shape(w, h, radius, blur, opacity)
 
     paste_x = x0 - pad + offset[0]
     paste_y = y0 - pad + offset[1]
