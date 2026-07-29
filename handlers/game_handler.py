@@ -1,0 +1,169 @@
+"""
+هندلرهای حین بازی: کلیک روی کلمه (حدس)، پایان دست، اتمام حدس،
+و پردازش ریپلای متنی جاسوس روی پیام پنل بازی (عدد + کلمه‌ی سرنخ).
+
+نکته‌ی مهمِ کارایی/UX: توی هر اکشن، callback.answer() بلافاصله بعدِ اعتبارسنجی و
+اعمالِ منطقِ بازی صدا زده می‌شه - قبل از رندر/ارسالِ سنگینِ عکس. اگه answer() بعد از
+اون کارِ سنگین صدا زده بشه، دکمه توی تلگرام تا اون موقع "در حالِ بارگذاری" می‌مونه و
+کاربرِ کم‌طاقت دوباره و سه‌باره روش می‌زنه - که خودش باعثِ اجرای چندبارِ همون اکشن و
+ارسالِ چندتایی پیام می‌شه. جوابِ فوری این مشکل رو کامل حل می‌کنه، صرف‌نظر از اینکه
+رندر/ارسالِ عکس چقدر طول بکشه.
+"""
+from __future__ import annotations
+
+import logging
+
+import asyncpg
+from aiogram import Router, Bot, F
+from aiogram.types import CallbackQuery, Message
+
+from database.repository import save_game, load_game, load_active_game_by_chat
+from game.state import GameError, GameStatus, Role, CardColor
+from game.clue_parser import parse_clue
+from handlers.game_flow import sync_board_message
+
+logger = logging.getLogger(__name__)
+
+router = Router(name="game")
+
+_GUESS_FEEDBACK = {
+    CardColor.RED: "🟥 قرمز بود!",
+    CardColor.BLUE: "🟦 آبی بود!",
+    CardColor.NEUTRAL: "⬜ خنثی بود.",
+    CardColor.ASSASSIN: "⬛ قاتل بود! 💀 باختید!",
+}
+
+
+def _is_current_operative(game, user_id: int) -> bool:
+    player = game.players.get(user_id)
+    return (
+        player is not None
+        and player.role == Role.OPERATIVE
+        and player.team == game.current_turn
+    )
+
+
+async def _sync_and_save(bot: Bot, db_conn: asyncpg.Pool, game, move_to_bottom: bool) -> None:
+    """رندر/ارسال/ذخیره - جدا از پاسخِ فوریِ callback، تا خطای احتمالیِ اینجا
+    (که معمولاً شبکه‌ای/موقتیه) باعثِ لو‌رفتنِ خطا به کاربر به‌شکلِ کرش نشه، فقط لاگ بشه."""
+    try:
+        await sync_board_message(bot, db_conn, game, move_to_bottom=move_to_bottom)
+    except Exception:
+        logger.exception("خطا در sync_board_message برای بازی %s", game.game_id)
+
+
+@router.callback_query(F.data == "noop")
+async def handle_noop(callback: CallbackQuery) -> None:
+    """دکمه‌های تزئینی/غیرقابل‌کلیک - کاری انجام نمی‌دن."""
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("board:"))
+async def handle_board_callback(
+    callback: CallbackQuery, bot: Bot, db_conn: asyncpg.Pool
+) -> None:
+    parts = callback.data.split(":")
+    game_id = parts[1]
+    action = parts[2]
+
+    game = await load_game(db_conn, game_id)
+    if game is None:
+        await callback.answer("این بازی دیگه وجود نداره.", show_alert=True)
+        return
+
+    user_id = callback.from_user.id
+
+    if action == "guess":
+        idx = int(parts[3])
+        if not _is_current_operative(game, user_id):
+            await callback.answer("نوبت شما نیست یا مامور این تیم نیستید.", show_alert=True)
+            return
+
+        turn_before = game.current_turn
+        try:
+            color = game.guess(idx, callback.from_user.full_name)
+        except GameError as e:
+            await callback.answer(str(e), show_alert=True)
+            return
+
+        turn_changed = (game.status == GameStatus.FINISHED) or (game.current_turn != turn_before)
+        # جوابِ فوری اول - قبل از رندر/ارسالِ سنگین (نکته‌ی بالای فایل رو ببین)
+        await callback.answer(_GUESS_FEEDBACK[color])
+        await save_game(db_conn, game)
+        await _sync_and_save(bot, db_conn, game, move_to_bottom=turn_changed)
+        return
+
+    if action == "endturn":
+        if not _is_current_operative(game, user_id):
+            await callback.answer("نوبت شما نیست یا مامور این تیم نیستید.", show_alert=True)
+            return
+        try:
+            game.end_turn()
+        except GameError as e:
+            await callback.answer(str(e), show_alert=True)
+            return
+        await callback.answer("نوبت به تیم مقابل منتقل شد.")
+        await save_game(db_conn, game)
+        await _sync_and_save(bot, db_conn, game, move_to_bottom=True)
+        return
+
+    if action == "endguess":
+        if not _is_current_operative(game, user_id):
+            await callback.answer("نوبت شما نیست یا مامور این تیم نیستید.", show_alert=True)
+            return
+        try:
+            game.end_guessing()
+        except GameError as e:
+            await callback.answer(str(e), show_alert=True)
+            return
+        await callback.answer("نوبت به تیم مقابل منتقل شد.")
+        await save_game(db_conn, game)
+        await _sync_and_save(bot, db_conn, game, move_to_bottom=True)
+        return
+
+    if action == "movebottom":
+        if user_id != game.host_id:
+            await callback.answer("فقط سازنده‌ی بازی می‌تونه پنل رو جابه‌جا کنه.", show_alert=True)
+            return
+        await callback.answer("پنل به آخرین پیام منتقل شد.")
+        await _sync_and_save(bot, db_conn, game, move_to_bottom=True)
+        return
+
+    await callback.answer()
+
+
+@router.message(F.reply_to_message, F.chat.type.in_({"group", "supergroup"}))
+async def handle_clue_reply(message: Message, bot: Bot, db_conn: asyncpg.Pool) -> None:
+    """
+    وقتی جاسوس روی پیام پنل بازی ریپلای می‌کنه: 'عدد + کلمه‌ی سرنخ' (مثلاً '2 طبیعت').
+    """
+    game = await load_active_game_by_chat(db_conn, message.chat.id)
+    if game is None:
+        return
+    if message.reply_to_message.message_id != game.last_message_id:
+        return
+    if game.status != GameStatus.AWAITING_CLUE:
+        return
+
+    player = game.players.get(message.from_user.id)
+    if player is None or player.role != Role.SPYMASTER or player.team != game.current_turn:
+        # این ریپلای مربوط به جاسوسِ نوبتِ فعلی نیست - نادیده می‌گیریم (نه خطا)
+        return
+
+    parsed = parse_clue(message.text)
+    if parsed is None:
+        await message.reply("❌ فرمت درست نیست. اول عدد، بعد کلمه‌ی سرنخ. مثلاً: 2 طبیعت")
+        return
+
+    n, word, stars = parsed
+    try:
+        game.set_clue_count(n, word, stars)
+    except GameError as e:
+        await message.reply(str(e))
+        return
+
+    star_note = "*" * stars
+    # اول تأییدِ فوری برای جاسوس، بعد کارِ سنگینِ رندر/ارسال
+    await message.reply(f"✅ سرنخ ثبت شد: «{word}{star_note}» ({n}) — نوبت حدس‌زدنه!")
+    await save_game(db_conn, game)
+    await _sync_and_save(bot, db_conn, game, move_to_bottom=False)
