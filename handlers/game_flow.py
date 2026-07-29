@@ -3,11 +3,20 @@
 - begin_game: تبدیل لابی به پنل بازیِ عکسی + فرستادن عکس خصوصی رنگی به هر جاسوس
 - sync_board_message: بعد از هر اکشن، عکس گروه رو آپدیت می‌کنه (ادیت یا حذف+ارسال)
   و عکس خصوصی جاسوس‌ها رو هم (فقط ضربدرها) به‌روز می‌کنه
+
+نکته‌ی مهمِ کارایی: رندرِ Pillow و انکودِ PNG کاملاً CPU-bound و synchronous هستن (هیچ
+await داخلی ندارن). اگه مستقیم داخلِ یه تابعِ async صدا زده بشن، کلِ event loop رو
+برای مدتِ رندر (چندصد میلی‌ثانیه تا چند ثانیه) کاملاً می‌بندن - یعنی هیچ بازیِ دیگه‌ای
+توی هیچ گروهِ دیگه‌ای هم نمی‌تونه پردازش بشه. توی یه بازیِ فعال با کلیک‌های پی‌درپی،
+این تأخیرها روی هم جمع می‌شن و دقیقاً همون کندی/فریزِ کاملی که گزارش شده رو می‌سازن.
+راه‌حل: هر رندر+انکود رو با asyncio.to_thread می‌بریم به یه ترد جدا، تا event loop
+اصلی همیشه آزاد بمونه و بتونه هم‌زمان به بقیه‌ی بازی‌ها/گروه‌ها هم جواب بده.
 """
 from __future__ import annotations
 
 import asyncio
 import io
+import logging
 
 import asyncpg
 from aiogram import Bot
@@ -20,12 +29,27 @@ from keyboards.board import build_board_rows, build_board_caption
 from keyboards.types import to_aiogram_markup
 from imaging.board_renderer import render_board, render_spymaster_board
 
+logger = logging.getLogger(__name__)
 
-def _to_input_file(img, filename: str = "board.png") -> BufferedInputFile:
+
+def _render_group_png_bytes(render_kwargs: dict) -> bytes:
+    """رندر + انکودِ PNGِ پنلِ گروه - تابعِ synchronous خالص، قراره با to_thread صدا زده بشه."""
+    img = render_board(**render_kwargs)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    buf.seek(0)
-    return BufferedInputFile(buf.read(), filename=filename)
+    return buf.getvalue()
+
+
+def _render_spymaster_png_bytes(spymaster_cards: list[dict]) -> bytes:
+    """رندر + انکودِ PNGِ نقشه‌ی جاسوس - تابعِ synchronous خالص، قراره با to_thread صدا زده بشه."""
+    img = render_spymaster_board(spymaster_cards)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _bytes_to_input_file(data: bytes, filename: str = "board.png") -> BufferedInputFile:
+    return BufferedInputFile(data, filename=filename)
 
 
 def _names_of(game: Game, team: Team, role: Role) -> list[str]:
@@ -106,11 +130,11 @@ async def _wait_and_send_spymaster_photo(
             return  # بازی پاک شده یا تموم شده، دیگه لازم نیست تلاش کنیم
 
         spymaster_cards = _build_spymaster_cards(game)
-        sm_img = render_spymaster_board(spymaster_cards)
+        sm_png = await asyncio.to_thread(_render_spymaster_png_bytes, spymaster_cards)
         try:
             msg = await bot.send_photo(
                 chat_id=user_id,
-                photo=_to_input_file(sm_img),
+                photo=_bytes_to_input_file(sm_png),
                 caption=f"🕵️ نقشه‌ی کامل بازی (تیم {team_value})",
                 protect_content=True,
             )
@@ -130,14 +154,20 @@ async def begin_game(bot: Bot, conn: asyncpg.Pool, game: Game) -> None:
     و برای هر جاسوس یه عکسِ خصوصیِ رنگی (یک‌بار، بدون لاگ/پنل) فرستاده می‌شه.
     """
     render_kwargs = _build_group_render_kwargs(game)
-    group_img = render_board(**render_kwargs)
+    spymaster_cards = _build_spymaster_cards(game)
+
+    # رندرِ عکسِ گروه و عکسِ جاسوس هم‌زمان (روی دو ترد جدا)
+    group_png, sm_png = await asyncio.gather(
+        asyncio.to_thread(_render_group_png_bytes, render_kwargs),
+        asyncio.to_thread(_render_spymaster_png_bytes, spymaster_cards),
+    )
     caption = build_board_caption(game)
     markup = to_aiogram_markup(build_board_rows(game, Role.OPERATIVE))
 
     try:
         sent = await bot.send_photo(
             chat_id=game.chat_id,
-            photo=_to_input_file(group_img),
+            photo=_bytes_to_input_file(group_png),
             caption=caption,
             reply_markup=markup,
         )
@@ -149,9 +179,7 @@ async def begin_game(bot: Bot, conn: asyncpg.Pool, game: Game) -> None:
     except TelegramBadRequest:
         pass
 
-    # --- عکس خصوصیِ رنگیِ جاسوس‌ها (یک‌بار، بدون پنل/لاگ) ---
-    spymaster_cards = _build_spymaster_cards(game)
-    sm_img = render_spymaster_board(spymaster_cards)
+    # --- عکس خصوصیِ رنگیِ جاسوس‌ها (رندر بالا مشترکه، برای همه‌شون یکسانه) ---
     spymasters = [p for p in game.players.values() if p.role == Role.SPYMASTER]
     failed_names: list[str] = []
 
@@ -159,12 +187,23 @@ async def begin_game(bot: Bot, conn: asyncpg.Pool, game: Game) -> None:
         try:
             msg = await bot.send_photo(
                 chat_id=sm.user_id,
-                photo=_to_input_file(sm_img),
+                photo=_bytes_to_input_file(sm_png),
                 caption=f"🕵️ نقشه‌ی کامل بازی (تیم {sm.team.value})",
                 protect_content=True,
             )
             game.spymaster_message_ids[str(sm.user_id)] = msg.message_id
         except TelegramForbiddenError:
+            failed_names.append(sm.name)
+            asyncio.create_task(
+                _wait_and_send_spymaster_photo(bot, conn, game.game_id, sm.user_id, sm.team.value)
+            )
+        except Exception:
+            # هر خطای دیگه (شبکه/timeout/rate-limit و...) - این‌طوری اگه یه جاسوس
+            # مشکل داشت، بقیه‌ی جاسوس‌ها بی‌نصیب نمی‌مونن (باگِ قبلی دقیقاً همین بود:
+            # فقط TelegramForbiddenError گرفته می‌شد و بقیه‌ی خطاها کلِ حلقه رو می‌بستن)
+            logger.exception(
+                "خطا در فرستادنِ عکسِ جاسوس به %s (game=%s)", sm.user_id, game.game_id
+            )
             failed_names.append(sm.name)
             asyncio.create_task(
                 _wait_and_send_spymaster_photo(bot, conn, game.game_id, sm.user_id, sm.team.value)
@@ -190,15 +229,23 @@ async def sync_board_message(
     بعد از هر اکشن (حدس/پایان دست/اتمام حدس):
     - عکس گروه (پنل بازی) رو آپدیت می‌کنه: یا ادیت درجا، یا حذف+ارسال ته چت
     - عکس خصوصیِ هر جاسوس رو هم (با ضربدرهای جدید روی کارت‌های حدس‌زده‌شده) ادیت می‌کنه
+    هر دو رندر با asyncio.to_thread روی یه ترد جدا انجام می‌شن تا بازی‌های دیگه معطل نمونن،
+    و ارسال/ادیتِ پیام‌های جاسوس‌ها هم موازی (asyncio.gather) انجام می‌شه تا سریع‌تر باشه.
     """
     render_kwargs = _build_group_render_kwargs(game)
-    group_img = render_board(**render_kwargs)
+    spymaster_cards = _build_spymaster_cards(game)
+
+    # رندرِ عکسِ گروه و عکسِ جاسوس هم‌زمان (روی دو ترد جدا) - نه پشتِ‌سرِهم
+    group_png, sm_png = await asyncio.gather(
+        asyncio.to_thread(_render_group_png_bytes, render_kwargs),
+        asyncio.to_thread(_render_spymaster_png_bytes, spymaster_cards),
+    )
     caption = build_board_caption(game)
     markup = to_aiogram_markup(build_board_rows(game, Role.OPERATIVE))
 
     if not move_to_bottom:
         try:
-            media = InputMediaPhoto(media=_to_input_file(group_img), caption=caption)
+            media = InputMediaPhoto(media=_bytes_to_input_file(group_png), caption=caption)
             await bot.edit_message_media(
                 chat_id=game.chat_id,
                 message_id=game.last_message_id,
@@ -214,25 +261,29 @@ async def sync_board_message(
             pass
         sent = await bot.send_photo(
             chat_id=game.chat_id,
-            photo=_to_input_file(group_img),
+            photo=_bytes_to_input_file(group_png),
             caption=caption,
             reply_markup=markup,
         )
         game.last_message_id = sent.message_id
 
-    # --- آپدیت عکس خصوصیِ جاسوس‌ها (فقط ضربدرهای جدید) ---
-    spymaster_cards = _build_spymaster_cards(game)
-    sm_img = render_spymaster_board(spymaster_cards)
+    # --- آپدیت عکس خصوصیِ جاسوس‌ها (فقط ضربدرهای جدید) - رندر بالا مشترکه، ارسال موازی ---
     spymasters = [p for p in game.players.values() if p.role == Role.SPYMASTER]
 
-    for sm in spymasters:
+    async def _update_one_spymaster(sm) -> None:
         msg_id = game.spymaster_message_ids.get(str(sm.user_id))
         if msg_id is None:
-            continue
+            return
         try:
-            media = InputMediaPhoto(media=_to_input_file(sm_img))
+            media = InputMediaPhoto(media=_bytes_to_input_file(sm_png))
             await bot.edit_message_media(chat_id=sm.user_id, message_id=msg_id, media=media)
         except (TelegramBadRequest, TelegramForbiddenError):
             pass
+        except Exception:
+            logger.exception(
+                "خطا در آپدیتِ عکسِ جاسوس برای %s (game=%s)", sm.user_id, game.game_id
+            )
+
+    await asyncio.gather(*(_update_one_spymaster(sm) for sm in spymasters))
 
     await save_game(conn, game)
