@@ -11,7 +11,8 @@ from aiogram import Bot, Dispatcher
 
 from config import BOT_TOKEN, DATABASE_URL
 from database.db import init_db
-from handlers import commands, lobby, help as help_handlers
+from database.repository import delete_stale_lobbies
+from handlers import commands, lobby, help as help_handlers, inline as inline_handlers
 from handlers import game as game_handlers
 
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +37,18 @@ async def _run_keepalive_server(port: int) -> None:
     logger.info(f"سرور keep-alive روی پورت {port} بالا اومد.")
 
 
+async def _run_periodic_cleanup(db_pool, interval_hours: int = 6) -> None:
+    """هر چند ساعت یه‌بار، لابی‌های رهاشده (هیچ‌وقت بازی نشدن) رو پاک می‌کنه."""
+    while True:
+        await asyncio.sleep(interval_hours * 3600)
+        try:
+            deleted = await delete_stale_lobbies(db_pool)
+            if deleted:
+                logger.info(f"پاک‌سازیِ دوره‌ای: {deleted} لابیِ رهاشده حذف شد.")
+        except Exception:
+            logger.exception("خطا در پاک‌سازیِ دوره‌ای لابی‌ها")
+
+
 async def main() -> None:
     if not BOT_TOKEN or BOT_TOKEN == "PUT_YOUR_TOKEN_HERE":
         raise RuntimeError(
@@ -49,12 +62,15 @@ async def main() -> None:
     dp.include_router(help_handlers.router)
     dp.include_router(lobby.router)
     dp.include_router(game_handlers.router)
+    dp.include_router(inline_handlers.router)
 
     db_pool = await init_db(DATABASE_URL)
     logger.info("اتصال به دیتابیس Postgres برقرار شد.")
 
     port = int(os.getenv("PORT", "8080"))
     await _run_keepalive_server(port)
+
+    asyncio.create_task(_run_periodic_cleanup(db_pool))
 
     logger.info("ربات در حال شروع Long Polling...")
     try:
