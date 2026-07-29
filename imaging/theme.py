@@ -8,13 +8,13 @@
 # --- رنگ‌های کارت (گرادیان مورب: روشن -> تیره/اصلی) ---
 CARD_CREAM = ("#ecd7b5", "#E9D0A9")               # فاش‌نشده (نشونِ مامورها قبل از لو رفتن)
 CARD_NEUTRAL_REVEALED = ("#c5ae81", "#BB9F69")    # خنثیِ فاش‌شده
-CARD_RED = ("#ff4750", "#FF000D")                 # فاش‌شده - تیم قرمز
+CARD_RED = ("#be5f6c", "#A52134")                 # فاش‌شده - تیم قرمز
 CARD_BLUE = ("#6babff", "#328BFF")                # فاش‌شده - تیم آبی
 CARD_ASSASSIN = ("#343434", "#020202")            # فاش‌شده - قاتل
 
 CARD_BORDER_CREAM = "#baa687"
 CARD_BORDER_NEUTRAL_REVEALED = "#957f54"
-CARD_BORDER_RED = "#b70009"
+CARD_BORDER_RED = "#761725"
 CARD_BORDER_BLUE = "#2464b7"
 CARD_BORDER_ASSASSIN = "#000000"
 
@@ -23,10 +23,10 @@ TEXT_WHITE = "#ffffff"      # متن روی کارت‌های رنگی و قات
 
 # --- رنگ‌های پنل تیم (نسخه‌ی تکی = دقیقاً همون رنگی که کاربر داد، برای متن/نشونه‌ها) ---
 PANEL_BLUE = "#328BFF"
-PANEL_RED = "#FF000D"
+PANEL_RED = "#A52134"
 # --- نسخه‌ی گرادیان (روشن -> تیره/اصلی) برای پس‌زمینه‌ی خودِ پنل، تا تخت به نظر نرسه ---
 PANEL_BLUE_GRADIENT = ("#5fa4ff", "#328BFF")
-PANEL_RED_GRADIENT = ("#ff3842", "#FF000D")
+PANEL_RED_GRADIENT = ("#b85160", "#A52134")
 
 # --- پس‌زمینه‌ی کل تصویر (بسته به نوبت) ---
 BG_BLUE_TURN = ("#1560BD", "#0e4384")
