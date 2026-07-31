@@ -26,21 +26,21 @@ _OPTIONS = [
         "🟢 شروع بازی - سطح آسون",
         "کلمات هر تیم با هم ربط دارن، حدس‌زدن راحت‌تره",
         "/codenames_easy",
-        "https://raw.githubusercontent.com/USERNAME/REPO/main/assets/images/easy.png",
+        "https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/easy.png",
     ),
     (
         "medium",
         "🟡 شروع بازی - سطح متوسط",
         "یه‌کم ربطِ ظریف بینِ کلمات هست، نه کاملاً رندوم",
         "/codenames_medium",
-        "https://raw.githubusercontent.com/USERNAME/REPO/main/assets/images/medium.png",
+        "https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/medium.png",
     ),
     (
         "hard",
         "🔴 شروع بازی - سطح سخت",
         "کلمات کاملاً رندومن، همون بازیِ اصلیِ کدنیم",
         "/codenames_hard",
-        "https://raw.githubusercontent.com/USERNAME/REPO/main/assets/images/hard.png",
+        "https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/hard.png",
     ),
 ]
 
