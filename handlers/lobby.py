@@ -23,7 +23,7 @@ from game.state import Game, GameError, Role, Team
 from game.locks import get_game_lock, drop_game_lock
 from keyboards.lobby import build_lobby_rows
 from keyboards.types import to_aiogram_markup
-from handlers.game_flow import begin_game
+from handlers.game_flow import begin_game, send_lobby_message
 
 router = Router(name="lobby")
 
@@ -164,10 +164,11 @@ async def handle_lobby_callback(callback: CallbackQuery, bot: Bot, db_conn: asyn
             host_id=game.host_id,
             team_size_mode=4,
         )
-        sent = await bot.send_message(
-            chat_id=game.chat_id,
-            text="🎮 یه بازی جدید کدنیم ساخته شد! نقش خودتون رو انتخاب کنید:",
-            reply_markup=to_aiogram_markup(build_lobby_rows(new_game)),
+        sent = await send_lobby_message(
+            bot,
+            game.chat_id,
+            "🎮 یه بازی جدید کدنیم ساخته شد! نقش خودتون رو انتخاب کنید:",
+            to_aiogram_markup(build_lobby_rows(new_game)),
         )
         new_game.last_message_id = sent.message_id
         await save_game(db_conn, new_game)
