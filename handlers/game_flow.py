@@ -17,10 +17,11 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 
 import asyncpg
 from aiogram import Bot
-from aiogram.types import BufferedInputFile, InputMediaPhoto
+from aiogram.types import BufferedInputFile, InputMediaPhoto, FSInputFile, Message
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
 from database.repository import save_game, load_game
@@ -30,6 +31,28 @@ from keyboards.types import to_aiogram_markup
 from imaging.board_renderer import render_board, render_spymaster_board
 
 logger = logging.getLogger(__name__)
+
+
+async def send_lobby_message(bot: Bot, chat_id: int, caption: str, reply_markup) -> Message:
+    """
+    پیامِ لابی رو با عکسِ بنرِ ثابت (config.LOBBY_BANNER_PATH) می‌فرسته. اگه فایلِ
+    عکس هنوز روی سرور آپلود نشده باشه، به‌جای کرش‌کردن، خودکار به پیامِ متنیِ ساده
+    (بدونِ عکس) fallback می‌کنه - بازی همچنان کار می‌کنه، فقط بدونِ بنر.
+    """
+    from config import LOBBY_BANNER_PATH
+
+    if os.path.exists(LOBBY_BANNER_PATH):
+        try:
+            return await bot.send_photo(
+                chat_id=chat_id,
+                photo=FSInputFile(LOBBY_BANNER_PATH),
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+        except Exception:
+            logger.exception("خطا در فرستادنِ عکسِ بنرِ لابی - fallback به متنِ ساده")
+
+    return await bot.send_message(chat_id=chat_id, text=caption, reply_markup=reply_markup)
 
 
 def _render_group_image_bytes(render_kwargs: dict) -> bytes:
