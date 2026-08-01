@@ -22,6 +22,7 @@ from game.state import Game
 from game.idgen import generate_game_id
 from keyboards.lobby import build_lobby_rows
 from keyboards.types import to_aiogram_markup
+from handlers.game_flow import send_lobby_message
 
 router = Router(name="commands")
 
@@ -49,9 +50,11 @@ async def _create_lobby(message: Message, db_conn: asyncpg.Pool, difficulty: str
         team_size_mode=4,
     )
     game.difficulty = difficulty
-    sent = await message.answer(
+    sent = await send_lobby_message(
+        message.bot,
+        message.chat.id,
         "🎮 یه بازی کدنیم جدید ساخته شد! نقش خودتون رو انتخاب کنید:",
-        reply_markup=to_aiogram_markup(build_lobby_rows(game)),
+        to_aiogram_markup(build_lobby_rows(game)),
     )
     game.last_message_id = sent.message_id
     await save_game(db_conn, game)
