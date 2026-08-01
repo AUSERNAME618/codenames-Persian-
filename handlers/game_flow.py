@@ -33,19 +33,36 @@ from imaging.board_renderer import render_board, render_spymaster_board
 logger = logging.getLogger(__name__)
 
 
+_lobby_banner_index = 0
+
+
+def _pick_lobby_banner_path() -> str | None:
+    """عکسِ بعدی رو به‌ترتیب (نه رندوم) از لیستِ LOBBY_BANNER_PATHS انتخاب می‌کنه.
+    فقط بینِ فایل‌هایی که واقعاً روی دیسک هستن می‌چرخه (بقیه رو نادیده می‌گیره)."""
+    global _lobby_banner_index
+    from config import LOBBY_BANNER_PATHS
+
+    existing = [p for p in LOBBY_BANNER_PATHS if os.path.exists(p)]
+    if not existing:
+        return None
+    path = existing[_lobby_banner_index % len(existing)]
+    _lobby_banner_index += 1
+    return path
+
+
 async def send_lobby_message(bot: Bot, chat_id: int, caption: str, reply_markup) -> Message:
     """
-    پیامِ لابی رو با عکسِ بنرِ ثابت (config.LOBBY_BANNER_PATH) می‌فرسته. اگه فایلِ
-    عکس هنوز روی سرور آپلود نشده باشه، به‌جای کرش‌کردن، خودکار به پیامِ متنیِ ساده
-    (بدونِ عکس) fallback می‌کنه - بازی همچنان کار می‌کنه، فقط بدونِ بنر.
+    پیامِ لابی رو با یکی از عکس‌های بنر (به‌ترتیب، نه رندوم - config.LOBBY_BANNER_PATHS)
+    می‌فرسته. اگه هیچ فایلی هنوز روی سرور آپلود نشده باشه، به‌جای کرش‌کردن، خودکار به
+    پیامِ متنیِ ساده (بدونِ عکس) fallback می‌کنه - بازی همچنان کار می‌کنه.
     """
-    from config import LOBBY_BANNER_PATH
+    banner_path = _pick_lobby_banner_path()
 
-    if os.path.exists(LOBBY_BANNER_PATH):
+    if banner_path:
         try:
             return await bot.send_photo(
                 chat_id=chat_id,
-                photo=FSInputFile(LOBBY_BANNER_PATH),
+                photo=FSInputFile(banner_path),
                 caption=caption,
                 reply_markup=reply_markup,
             )
