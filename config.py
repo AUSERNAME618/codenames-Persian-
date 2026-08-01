@@ -13,9 +13,17 @@ WORDS_PATH = os.getenv("WORDS_PATH", "data/words_fa.json")
 # مسیر فایلِ خوشه‌های کلمه‌ای (برای گیم‌مودِ آسون/متوسط)
 WORD_CLUSTERS_PATH = os.getenv("WORD_CLUSTERS_PATH", "data/word_clusters.json")
 
-# مسیرِ عکسِ بنرِ ثابتِ لابی (وقتی /codenames زده می‌شه). اگه فایل وجود نداشته باشه،
-# ربات به‌طور خودکار به پیامِ متنیِ ساده fallback می‌کنه (کرش نمی‌کنه).
-LOBBY_BANNER_PATH = os.getenv("LOBBY_BANNER_PATH", "assets/images/lobby_banner.jpg")
+# لیستِ عکس‌های بنرِ لابی - هر بازیِ جدید، به‌ترتیب (نه رندوم) یکی از این‌ها رو
+# استفاده می‌کنه. هر تعداد عکس می‌تونی بذاری (فقط ۱ تا، یا بیشتر). اگه فایلی وجود
+# نداشته باشه، خودکار نادیده گرفته می‌شه؛ اگه هیچ‌کدوم نبودن، fallback به متنِ ساده.
+LOBBY_BANNER_PATHS = [
+    p.strip()
+    for p in os.getenv(
+        "LOBBY_BANNER_PATHS",
+        "assets/images/lobby_banner_1.jpg,assets/images/lobby_banner_2.jpg,assets/images/lobby_banner_3.jpg",
+    ).split(",")
+    if p.strip()
+]
 
 # ترتیب چرخشی سطح دشواری با دکمه‌ی «تغییر سطح»
 DIFFICULTY_CYCLE = ["hard", "medium", "easy"]
