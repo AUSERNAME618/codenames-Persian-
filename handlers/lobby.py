@@ -20,7 +20,7 @@ from aiogram.exceptions import TelegramBadRequest
 from config import WORDS_PATH, WORD_CLUSTERS_PATH
 from database.repository import save_game, load_game, delete_game
 from game.state import Game, GameError, Role, Team
-from game.locks import get_game_lock, drop_game_lock
+from game.locks import get_game_lock, drop_game_lock, is_duplicate_callback
 from keyboards.lobby import build_lobby_rows
 from keyboards.types import to_aiogram_markup
 from handlers.game_flow import begin_game, send_lobby_message
@@ -55,6 +55,9 @@ async def _refresh_lobby_message(bot: Bot, game: Game) -> None:
 
 @router.callback_query(F.data.startswith("lobby:"))
 async def handle_lobby_callback(callback: CallbackQuery, bot: Bot, db_conn: asyncpg.Pool) -> None:
+    if is_duplicate_callback(callback.id):
+        return
+
     parts = callback.data.split(":")
     # ساختار: lobby:{game_id}:{action}[:...]
     game_id = parts[1]
