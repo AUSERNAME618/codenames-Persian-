@@ -62,3 +62,25 @@ async def coalesced_sync(game_id: str, sync_fn) -> None:
             await sync_fn()
     finally:
         _sync_in_progress[game_id] = False
+
+
+# --- محافظِ idempotency برای callback_query ---
+# هر callback_query یه id یکتای خودش رو از تلگرام داره. اگه به هر دلیلی (تپِ خیلی
+# سریعِ کاربر قبل از این‌که انیمیشنِ لودینگ نشون داده بشه، یا ارسالِ دوبار از سمتِ
+# تلگرام) دقیقاً همون callback دوبار به دستِ ما برسه، نباید دوبار اکشن رو اجرا کنیم.
+# این یه ست ساده با سقفِ اندازه‌ست (نه دیتابیس، چون فقط برای چند ثانیه لازمه).
+_seen_callback_ids: set[str] = set()
+_MAX_SEEN_IDS = 2000
+
+
+def is_duplicate_callback(callback_id: str) -> bool:
+    """True اگه این callback_id قبلاً دیده شده (یعنی نباید دوباره پردازش بشه)."""
+    if callback_id in _seen_callback_ids:
+        return True
+    _seen_callback_ids.add(callback_id)
+    if len(_seen_callback_ids) > _MAX_SEEN_IDS:
+        # به‌جای نگه‌داشتنِ زمان‌بندیِ دقیق، وقتی خیلی بزرگ شد نصفش رو خالی می‌کنیم
+        # (ساده و کافیه، چون فقط برای جلوگیریِ کوتاه‌مدت از تکرار لازمه)
+        for cid in list(_seen_callback_ids)[: _MAX_SEEN_IDS // 2]:
+            _seen_callback_ids.discard(cid)
+    return False
