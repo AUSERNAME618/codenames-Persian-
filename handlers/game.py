@@ -2,23 +2,23 @@
 هندلرهای حین بازی: کلیک روی کلمه (حدس)، پایان دست، اتمام حدس،
 و پردازش ریپلای متنی جاسوس روی پیام پنل بازی (عدد + کلمه‌ی سرنخ).
 
-سه نکته‌ی مهمِ کارایی/صحت:
+چهار نکته‌ی مهمِ کارایی/صحت:
 
 ۱) callback.answer() بلافاصله بعدِ اعتبارسنجی و اعمالِ منطقِ بازی صدا زده می‌شه -
    قبل از رندر/ارسالِ سنگینِ عکس.
 
 ۲) قفلِ per-game (game/locks.py) فقط دورِ بخشِ *سریع* (load -> تغییر -> answer -> save)
-   کشیده می‌شه - نه دورِ رندر/آپلودِ عکس. اگه قفل دورِ کلِ فرآیند (شاملِ رندر/آپلود که
-   خودش چند ثانیه طول می‌کشه) کشیده بشه، هر اکشنِ بعدیِ روی همون بازی باید کاملاً
-   منتظرِ تمومِ اون فرآیندِ کند بمونه - حتی برای صدازدنِ خودِ callback.answer()! دقیقاً
-   همین باعث شد توی لاگِ واقعیِ سرور، بعضی اکشن‌ها ۴۰+ ثانیه طول بکشن و تلگرام
-   کوئریِ callback رو "too old" اعلام کنه (چون callback query هم باید سریع جواب داده
-   بشه). الان قفل خیلی زود آزاد می‌شه، رندر/ارسال بیرونِ قفل انجام می‌شه.
+   کشیده می‌شه - نه دورِ رندر/آپلودِ عکس.
 
-۳) چون رندر بیرونِ قفل انجام می‌شه، ممکنه بینِ آزادشدنِ قفل و انجام‌شدنِ رندر، یه
-   اکشنِ دیگه حالت رو عوض کرده باشه. برای همین sync_board_message به‌جای گرفتنِ
-   آبجکتِ game، فقط game_id می‌گیره و خودش همون‌موقع آخرین حالت رو از دیتابیس
-   می‌خونه - این‌طوری همیشه جدیدترین حالت رندر می‌شه، نه یه نسخه‌ی قدیمی.
+۳) به‌جای این‌که sync_board_message همیشه دوباره از دیتابیس بخونه (یه رفت‌وبرگشتِ
+   شبکه‌ای اضافه که چند صد میلی‌ثانیه تا حتی چند ثانیه طول می‌کشه)، توی حالتِ
+   معمولی (بدونِ رقابتِ هم‌زمان) مستقیم همون آبجکتِ Game که تازه mutate/save
+   کردیم رو می‌دیم. فقط وقتی coalesced_sync تشخیص بده یه اکشنِ دیگه هم‌زمان اومده
+   (یعنی احتمالِ staleness هست)، اجرای دوم دوباره از دیتابیس می‌خونه.
+
+۴) هر callback_query یه شناسه‌ی یکتا داره؛ اگه دقیقاً همون یکی دوبار به دستِ ما
+   برسه (مثلاً تپِ خیلی سریعِ کاربر)، بارِ دوم نادیده گرفته می‌شه - از پیامِ تکراری
+   جلوگیری می‌کنه، حتی مستقل از سرعتِ پاسخ‌گویی.
 """
 from __future__ import annotations
 
@@ -29,9 +29,9 @@ from aiogram import Router, Bot, F
 from aiogram.types import CallbackQuery, Message
 
 from database.repository import save_game, load_game, load_active_game_by_chat
-from game.state import GameError, GameStatus, Role, CardColor
+from game.state import Game, GameError, GameStatus, Role, CardColor
 from game.clue_parser import parse_clue
-from game.locks import get_game_lock, coalesced_sync
+from game.locks import get_game_lock, coalesced_sync, is_duplicate_callback
 from handlers.game_flow import sync_board_message
 
 logger = logging.getLogger(__name__)
@@ -55,17 +55,23 @@ def _is_current_operative(game, user_id: int) -> bool:
     )
 
 
-async def _sync_and_save(bot: Bot, db_conn: asyncpg.Pool, game_id: str, move_to_bottom: bool) -> None:
-    """رندر/ارسال - عمداً *بیرونِ* قفلِ بازی صدا زده می‌شه (نکته‌ی ۲ بالای فایل)، و با
-    coalesced_sync محافظت می‌شه تا اگه چندتا اکشنِ پشتِ‌سرِهم صدا زده باشنش، بیش از
-    یه sync هم‌زمان روی همین بازی اجرا نشه (وگرنه چندتا عکسِ اضافه/اسپم می‌شه).
-    خطای احتمالیِ اینجا (معمولاً شبکه‌ای/موقتی) فقط لاگ می‌شه، نه اینکه کرش کنه."""
+async def _sync_and_save(
+    bot: Bot, db_conn: asyncpg.Pool, game_id: str, move_to_bottom: bool, fresh_game: Game | None
+) -> None:
+    """رندر/ارسال - عمداً *بیرونِ* قفلِ بازی صدا زده می‌شه، و با coalesced_sync
+    محافظت می‌شه. fresh_game اگه داده بشه، بارِ اول (بدونِ رقابت) از همون استفاده
+    می‌شه (بدونِ fetch اضافه از دیتابیس)؛ اگه coalescing تشخیص بده اجرای دومی هم
+    لازمه، اون اجرا حتماً دوباره از دیتابیس می‌خونه (چون یعنی حالت عوض شده)."""
+    state = {"game": fresh_game}
 
     async def _do_sync() -> None:
         try:
-            await sync_board_message(bot, db_conn, game_id, move_to_bottom=move_to_bottom)
+            target = state["game"] if state["game"] is not None else game_id
+            await sync_board_message(bot, db_conn, target, move_to_bottom=move_to_bottom)
         except Exception:
             logger.exception("خطا در sync_board_message برای بازی %s", game_id)
+        finally:
+            state["game"] = None  # اجرای بعدی (اگه لازم بشه) حتماً fresh فچ کنه
 
     await coalesced_sync(game_id, _do_sync)
 
@@ -80,12 +86,17 @@ async def handle_noop(callback: CallbackQuery) -> None:
 async def handle_board_callback(
     callback: CallbackQuery, bot: Bot, db_conn: asyncpg.Pool
 ) -> None:
+    if is_duplicate_callback(callback.id):
+        # دقیقاً همین تپ قبلاً پردازش شده - بی‌سروصدا نادیده می‌گیریم (نه پیامِ تکراری)
+        return
+
     parts = callback.data.split(":")
     game_id = parts[1]
     action = parts[2]
     user_id = callback.from_user.id
 
     move_to_bottom: bool | None = None  # اگه None بمونه، یعنی نیازی به sync نیست
+    game: Game | None = None
 
     async with get_game_lock(game_id):
         game = await load_game(db_conn, game_id)
@@ -149,7 +160,7 @@ async def handle_board_callback(
 
     # --- قفل اینجا آزاد شده - رندر/ارسالِ سنگین بیرونِ قفل انجام می‌شه ---
     if move_to_bottom is not None:
-        await _sync_and_save(bot, db_conn, game_id, move_to_bottom=move_to_bottom)
+        await _sync_and_save(bot, db_conn, game_id, move_to_bottom=move_to_bottom, fresh_game=game)
 
 
 @router.message(F.reply_to_message, F.chat.type.in_({"group", "supergroup"}))
@@ -177,7 +188,7 @@ async def handle_clue_reply(message: Message, bot: Bot, db_conn: asyncpg.Pool) -
 
     n, word, stars = parsed
     game_id = game.game_id
-    success = False
+    fresh_game: Game | None = None
 
     async with get_game_lock(game_id):
         # بعدِ گرفتنِ قفل، دوباره تازه‌ترین حالت رو می‌خونیم (ممکنه بینِ چک بالا و
@@ -195,7 +206,7 @@ async def handle_clue_reply(message: Message, bot: Bot, db_conn: asyncpg.Pool) -
         # اول تأییدِ فوری برای جاسوس، بعد کارِ سنگینِ رندر/ارسال
         await message.reply(f"✅ سرنخ ثبت شد: «{word}{star_note}» ({n}) — نوبت حدس‌زدنه!")
         await save_game(db_conn, game)
-        success = True
+        fresh_game = game
 
-    if success:
-        await _sync_and_save(bot, db_conn, game_id, move_to_bottom=False)
+    if fresh_game is not None:
+        await _sync_and_save(bot, db_conn, game_id, move_to_bottom=False, fresh_game=fresh_game)
