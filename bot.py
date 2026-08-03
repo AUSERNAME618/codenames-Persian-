@@ -49,6 +49,21 @@ async def _run_periodic_cleanup(db_pool, interval_hours: int = 6) -> None:
             logger.exception("خطا در پاک‌سازیِ دوره‌ای لابی‌ها")
 
 
+async def _run_db_keepalive(db_pool, interval_minutes: int = 4) -> None:
+    """
+    هر چند دقیقه یه کوئریِ خیلی سبک (SELECT 1) می‌زنه تا دیتابیسِ سرورلس (مثلاً Neon)
+    به‌خاطرِ بی‌کاری suspend نشه. اگه دیتابیس suspend بشه، اولین کوئریِ بعدش می‌تونه
+    چند ثانیه طول بکشه (cold start) - که دقیقاً یکی از منابعِ احتمالیِ کندیِ گاه‌به‌گاهه.
+    """
+    while True:
+        await asyncio.sleep(interval_minutes * 60)
+        try:
+            async with db_pool.acquire() as conn:
+                await conn.execute("SELECT 1")
+        except Exception:
+            logger.exception("خطا در پینگِ نگه‌داشتنِ دیتابیس")
+
+
 async def main() -> None:
     if not BOT_TOKEN or BOT_TOKEN == "PUT_YOUR_TOKEN_HERE":
         raise RuntimeError(
@@ -71,6 +86,7 @@ async def main() -> None:
     await _run_keepalive_server(port)
 
     asyncio.create_task(_run_periodic_cleanup(db_pool))
+    asyncio.create_task(_run_db_keepalive(db_pool))
 
     logger.info("ربات در حال شروع Long Polling...")
     try:
