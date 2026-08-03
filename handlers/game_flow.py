@@ -23,6 +23,7 @@ import asyncpg
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, InputMediaPhoto, FSInputFile, Message
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+from PIL import Image
 
 from database.repository import save_game, load_game
 from game.state import Game, Team, Role, GameStatus
@@ -72,21 +73,34 @@ async def send_lobby_message(bot: Bot, chat_id: int, caption: str, reply_markup)
     return await bot.send_message(chat_id=chat_id, text=caption, reply_markup=reply_markup)
 
 
+_OUTPUT_SCALE = 0.8  # کوچیک‌کردنِ عکسِ نهایی قبل از انکود - حجم/زمانِ آپلود رو محسوس
+                     # کم می‌کنه، بدونِ افتِ محسوسِ خوانایی (متن‌ها بولد و supersample شدن)
+
+
+def _downscale_for_output(img):
+    if _OUTPUT_SCALE >= 1.0:
+        return img
+    new_size = (round(img.width * _OUTPUT_SCALE), round(img.height * _OUTPUT_SCALE))
+    return img.resize(new_size, Image.LANCZOS)
+
+
 def _render_group_image_bytes(render_kwargs: dict) -> bytes:
-    """رندر + انکودِ پنلِ گروه. خروجی JPEG (نه PNG) با کیفیتِ ۸۸: طبقِ اندازه‌گیری،
-    حجم رو ~۳۰٪ کم می‌کنه (آپلود/ادیت روی تلگرام سریع‌تر می‌شه) با افتِ کیفیتِ
-    کاملاً نامحسوس (کمتر از ۱٪ میانگین اختلافِ پیکسل، حتی نزدیکِ متن)."""
+    """رندر + انکودِ پنلِ گروه. خروجی JPEG (نه PNG) با کیفیتِ ۸۸ و کوچیک‌شده به ۸۰٪:
+    طبقِ اندازه‌گیری، حجم رو در مجموع ~۵۰٪ کم می‌کنه (آپلود/ادیت روی تلگرام سریع‌تر
+    می‌شه) با افتِ کیفیتِ قابلِ قبول."""
     img = render_board(**render_kwargs).convert("RGB")
+    img = _downscale_for_output(img)
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=88, optimize=True)
+    img.save(buf, format="JPEG", quality=87, optimize=True)
     return buf.getvalue()
 
 
 def _render_spymaster_image_bytes(spymaster_cards: list[dict]) -> bytes:
-    """رندر + انکودِ نقشه‌ی جاسوس (JPEG کیفیتِ ۸۸، همون منطقِ بالا)."""
+    """رندر + انکودِ نقشه‌ی جاسوس (همون منطقِ بالا)."""
     img = render_spymaster_board(spymaster_cards).convert("RGB")
+    img = _downscale_for_output(img)
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=88, optimize=True)
+    img.save(buf, format="JPEG", quality=87, optimize=True)
     return buf.getvalue()
 
 
