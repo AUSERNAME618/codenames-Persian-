@@ -85,8 +85,15 @@ async def main() -> None:
     port = int(os.getenv("PORT", "8080"))
     await _run_keepalive_server(port)
 
-    asyncio.create_task(_run_periodic_cleanup(db_pool))
-    asyncio.create_task(_run_db_keepalive(db_pool))
+    # نکته‌ی مهم: باید یه رفرنسِ زنده به این تسک‌ها نگه داریم (توی یه لیست/ست)، وگرنه
+    # asyncio فقط رفرنسِ ضعیف بهشون داره و garbage collector ممکنه هر لحظه (حتی وسطِ
+    # کار، بدون هیچ خطایی) نابودشون کنه - یعنی تسکِ نگه‌دارِ دیتابیس می‌تونه خاموش بشه
+    # و دیگه هیچ‌وقت SELECT 1 نزنه، بدون اینکه هیچ لاگی ازش دیده بشه.
+    background_tasks: set[asyncio.Task] = set()
+    for coro in (_run_periodic_cleanup(db_pool), _run_db_keepalive(db_pool)):
+        task = asyncio.create_task(coro)
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
 
     logger.info("ربات در حال شروع Long Polling...")
     try:
