@@ -59,4 +59,7 @@ async def handle_inline_query(inline_query: InlineQuery) -> None:
         )
         for key, title, description, command_text, thumb_url in _OPTIONS
     ]
-    await inline_query.answer(results, cache_time=1, is_personal=True)
+    # cache_time بالا (۲۴ ساعت) چون این سه گزینه برای همه ثابتن و تغییر نمی‌کنن؛
+    # is_personal=False یعنی این کش بینِ همه‌ی کاربرا مشترکه (نه فقط همون یه نفر) -
+    # همین دو مورد تنها دلیلِ اصلیِ کندیِ نمایشِ پنلِ اینلاین بود.
+    await inline_query.answer(results, cache_time=86400, is_personal=False)
