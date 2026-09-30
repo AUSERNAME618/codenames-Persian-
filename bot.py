@@ -14,7 +14,7 @@ from database.db import init_db
 from database.repository import delete_stale_lobbies
 from handlers import commands, lobby, help as help_handlers, inline as inline_handlers
 from handlers import game as game_handlers
-from pictures_game import pictures_router
+from handlers import pictures as pictures_handlers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("codenames_bot")
@@ -53,7 +53,7 @@ async def _run_periodic_cleanup(db_pool, interval_hours: int = 6) -> None:
 async def _run_db_keepalive(db_pool, interval_minutes: int = 4) -> None:
     """
     هر چند دقیقه یه کوئریِ خیلی سبک (SELECT 1) می‌زنه تا دیتابیسِ سرورلس (مثلاً Neon)
-    به‌‌خاطرِ بی‌کاری suspend نشه. اگه دیتابیس suspend بشه، اولین کوئریِ بعدش می‌تونه
+    به‌خاطرِ بی‌کاری suspend نشه. اگه دیتابیس suspend بشه، اولین کوئریِ بعدش می‌تونه
     چند ثانیه طول بکشه (cold start) - که دقیقاً یکی از منابعِ احتمالیِ کندیِ گاه‌به‌گاهه.
     """
     while True:
@@ -74,8 +74,8 @@ async def main() -> None:
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    # روتر حالت تصویری اختصاصی
-    dp.include_router(pictures_router)
+    # روتر حالت تصویری (Pictures)
+    dp.include_router(pictures_handlers.router)
 
     # روترهای اصلی ربات
     dp.include_router(commands.router)
@@ -90,10 +90,7 @@ async def main() -> None:
     port = int(os.getenv("PORT", "8080"))
     await _run_keepalive_server(port)
 
-    # نکته‌ی مهم: باید یه رفرنسِ زنده به این تسک‌ها نگه داریم (توی یه لیست/ست)، وگرنه
-    # asyncio فقط رفرنسِ ضعیف بهشون داره و garbage collector ممکنه هر لحظه (حتی وسطِ
-    # کار، بدون هیچ خطایی) نابودشون کنه - یعنی تسکِ نگه‌دارِ دیتابیس می‌‌تونه خاموش بشه
-    # و دیگه هیچ‌وقت SELECT 1 نزنه، بدون اینکه هیچ لاگی ازش دیده بشه.
+    # تسک‌های دوره‌ای نگه‌دارنده دیتابیس
     background_tasks: set[asyncio.Task] = set()
     for coro in (_run_periodic_cleanup(db_pool), _run_db_keepalive(db_pool)):
         task = asyncio.create_task(coro)
@@ -102,9 +99,6 @@ async def main() -> None:
 
     logger.info("ربات در حال شروع Long Polling...")
     try:
-        # قبل از شروعِ polling، هر آپدیتِ عقب‌مونده‌ی حینِ خاموشی/ری‌استارت رو دور
-        # می‌ریزیم - وگرنه مثلاً چندتا /codenames که حینِ داون‌بودنِ ربات فرستاده شدن،
-        # یهو همه‌‌شون با هم پردازش می‌شن و باعثِ اسپمِ چندین لابیِ پشتِ‌سرِهم می‌شن.
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, db_conn=db_pool)
     finally:
