@@ -1,65 +1,56 @@
 """
-حالتِ Inline: وقتی کاربر توی هر چتی می‌نویسه "@آیدی‌ربات" (با یه فاصله بعدش)،
-سه گزینه‌ی سطحِ دشواری نشون داده می‌شه. با زدنِ هرکدوم، یه پیامِ متنی (که دستورِ
-مخصوصِ همون سطحه، مثلِ /codenames_easy) از طرفِ خودِ کاربر توی چت فرستاده می‌شه؛
-handlers/commands.py با دیدنِ این دستور، لابیِ عادی رو با اون سطح می‌سازه - یعنی
-هیچ زیرساختِ جدیدی (مثلِ ویرایشِ پیام‌های inline) لازم نیست، فقط یه میان‌بر برای
-فرستادنِ دستورِ درسته.
-
-نکته: برای فعال‌شدنِ این قابلیت، باید حالتِ Inline توی BotFather برای ربات روشن
-بشه (دستورِ /setinline توی چت با @BotFather).
-
-آیکونِ کوچیک (thumbnail_url): هرکدوم از URLهای پایین رو با آدرسِ واقعیِ عکسِ خودت
-جایگزین کن. باید یه آدرسِ اینترنتیِ *عمومی* باشه (نه فایلِ لوکال) - مثلاً اگه
-ریپازیتوریِ گیت‌هابت پابلیکه، می‌تونی عکس رو تو یه پوشه (مثلاً assets/images/)
-بذاری و از لینکِ raw.githubusercontent.com استفاده کنی:
-https://raw.githubusercontent.com/USERNAME/REPO/main/assets/images/easy.png
+هندلر اینلاین ربات کدنیمز
+پشتیبانی از حالت‌های کلماتی (آسان، متوسط، سخت) و حالت تصویری (Pictures)
 """
 from aiogram import Router
-from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+from aiogram.types import (
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+)
 
 router = Router(name="inline")
 
-_OPTIONS = [
-    (
-        "easy",
-        "🟢 شروع بازی - سطح آسون",
-        "کلمات هر تیم با هم ربط دارن، حدس‌زدن راحت‌تره",
-        "/codenames_easy",
-        "https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/easy.png",
-    ),
-    (
-        "medium",
-        "🟡 شروع بازی - سطح متوسط",
-        "یه‌کم ربطِ ظریف بینِ کلمات هست، نه کاملاً رندوم",
-        "/codenames_medium",
-        "https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/medium.png",
-    ),
-    (
-        "hard",
-        "🔴 شروع بازی - سطح سخت",
-        "کلمات کاملاً رندومن، همون بازیِ اصلیِ کدنیم",
-        "/codenames_hard",
-        "https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/hard.png",
-    ),
-]
-
 
 @router.inline_query()
-async def handle_inline_query(inline_query: InlineQuery) -> None:
+async def inline_query_handler(inline_query: InlineQuery):
     results = [
         InlineQueryResultArticle(
-            id=key,
-            title=title,
-            description=description,
-            input_message_content=InputTextMessageContent(message_text=command_text),
-            thumbnail_url=thumb_url,
-            thumbnail_width=128,
-            thumbnail_height=128,
-        )
-        for key, title, description, command_text, thumb_url in _OPTIONS
+            id="mode_easy",
+            title="کدنیمز - آسان 🟢",
+            description="کلمات ساده و آشنا مناسب برای بازی‌های سریع و مبتدی",
+            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/easy.png",
+            input_message_content=InputTextMessageContent(
+                message_text="/codenames easy"
+            ),
+        ),
+        InlineQueryResultArticle(
+            id="mode_medium",
+            title="کدنیمز - متوسط 🟡",
+            description="ترکیب کلمات عمومی و چالشی، استاندارد و پرهیجان",
+            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/medium.png",
+            input_message_content=InputTextMessageContent(
+                message_text="/codenames medium"
+            ),
+        ),
+        InlineQueryResultArticle(
+            id="mode_hard",
+            title="کدنیمز - سخت 🔴",
+            description="کلمات مفهومی و دوپهلو، نیازمند تمرکز و هوش بالا",
+            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/hard.png",
+            input_message_content=InputTextMessageContent(
+                message_text="/codenames hard"
+            ),
+        ),
+        InlineQueryResultArticle(
+            id="mode_pictures",
+            title="کدنیمز - تصویری 🖼",
+            description="حالت رسمی Codenames: Pictures با ۲۰ کارت تصویری (شبکه ۵×۴)",
+            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/medium.png",
+            input_message_content=InputTextMessageContent(
+                message_text="/pictures"
+            ),
+        ),
     ]
-    # cache_time بالا (۲۴ ساعت) چون این سه گزینه برای همه ثابتن و تغییر نمی‌کنن؛
-    # is_personal=False یعنی این کش بینِ همه‌ی کاربرا مشترکه (نه فقط همون یه نفر) -
-    # همین دو مورد تنها دلیلِ اصلیِ کندیِ نمایشِ پنلِ اینلاین بود.
-    await inline_query.answer(results, cache_time=86400, is_personal=False)
+
+    await inline_query.answer(results, cache_time=5, is_personal=True)
