@@ -1,6 +1,5 @@
 """
 هندلر اینلاین ربات کدنیمز
-پشتیبانی از حالت‌های کلماتی (آسان، متوسط، سخت) و حالت تصویری (Pictures)
 """
 from aiogram import Router
 from aiogram.types import (
