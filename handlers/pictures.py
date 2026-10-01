@@ -1,16 +1,17 @@
 """
 handlers/pictures.py
 ماژول کامل و بدون باگ Codenames: Pictures
-- رندر کامل تخته مسابقه برای گروه با پنل‌های دوطرفه، لاگ‌ها، باکس سرنخ و فونت پفک
-- رندر مجزا و اختصاصی نقشه جاسوس (فقط ۲۰ تصویر و رنگ‌های مخفی بدون هیچ پنل یا نوشته)
-- ارسال خودکار نقشه در پی‌وی بدون متن با protect_content و آپدیت زنده و بی‌صدا
-- لابی استاندارد تیمی با شرط حداقل ۴ نفر
-- پاسخ‌دهی قطعی به پیام‌های پیش‌نمایش در پی‌وی
+- تایمر پایدار ۱۰ دقیقه‌ای با تمدید خودکار در هر کلیک
+- رندر کامل تخته گروه (پنل‌های کناری، لاگ هر تیم، باکس سرنخ و کارت‌های بزرگ با اورلی کامل)
+- رندر مجزا و اختصاصی نقشه جاسوس (فقط ۲۰ کارت و رنگ‌ها بدون هیچ پنل یا متنی)
+- ارسال خودکار نقشه در پی‌وی با protect_content و آپدیت زنده
+- پیش‌نمایش آنی در پی‌وی با کلمات «تصویری» و «کلماتی»
 """
 
 import os
 import glob
 import html
+import time
 import random
 import logging
 from io import BytesIO
@@ -36,6 +37,7 @@ router = Router(name="pictures_game")
 TOTAL_PICTURES = 20
 COLS = 5
 ROWS = 4
+LOBBY_TIMEOUT_SECONDS = 600  # ۱۰ دقیقه کامل
 
 ROLE_STARTER_AGENT = "STARTER_AGENT"
 ROLE_SECOND_AGENT = "SECOND_AGENT"
@@ -45,12 +47,12 @@ ROLE_ASSASSIN = "ASSASSIN"
 TEAM_RED = "RED"
 TEAM_BLUE = "BLUE"
 
-# پالت رنگی مورد نظر: قرمز، آبی، کرمی خاکی، مشکی زغالی
+# پالت رنگی استاندارد و دقیق
 COLOR_MAP = {
     TEAM_RED: (220, 50, 50),
     TEAM_BLUE: (35, 125, 235),
-    ROLE_BYSTANDER: (210, 190, 155),
-    ROLE_ASSASSIN: (20, 20, 25),
+    ROLE_BYSTANDER: (210, 190, 155),  # کرمی خاکی برای شهروند بی‌طرف
+    ROLE_ASSASSIN: (20, 20, 25),      # مشکی زغالی برای قاتل
 }
 
 pic_lobbies: Dict[int, Dict] = {}
@@ -58,7 +60,7 @@ pic_games: Dict[int, "PicturesGameSession"] = {}
 
 
 def fa(text: str) -> str:
-    """تنظیم و اتصال حروف فارسی بدون ریسک کرش پایتون"""
+    """تنظیم و اتصال حروف فارسی بدون ریسک کرش"""
     if not text:
         return ""
     try:
@@ -120,7 +122,6 @@ class PicturesGameSession:
 
         selected_images = random.sample(all_images, TOTAL_PICTURES)
 
-        # تقسیم دقیق نقش‌ها: ۸ تیم اول، ۷ تیم دوم، ۴ بی‌طرف، ۱ قاتل
         roles = (
             [ROLE_STARTER_AGENT] * 8 +
             [ROLE_SECOND_AGENT] * 7 +
@@ -211,20 +212,19 @@ class PicturesGameSession:
 
 
 # ==========================================
-# سیستم رندر اختصاصی
+# سیستم رندر تصاویر
 # ==========================================
 
 class PicturesRenderer:
     @staticmethod
     def render_board(game: PicturesGameSession) -> Image.Image:
-        """رندر تخته کامل برای گروه با پنل‌های کناری، لاگ‌ها و سرنخ"""
+        """رندر تخته کامل برای گروه با پنل‌های کناری، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ"""
         CANVAS_W = 1440
         CANVAS_H = 920
 
         board = Image.new("RGBA", (CANVAS_W, CANVAS_H), (11, 47, 82, 255))
         draw = ImageDraw.Draw(board)
 
-        # رسم شبکه نقطه‌ای پس‌زمینه
         dot_color = (25, 75, 120, 180)
         for dx in range(12, CANVAS_W, 24):
             for dy in range(12, CANVAS_H, 24):
@@ -274,12 +274,12 @@ class PicturesRenderer:
         bbox_sub = font_sub.getbbox(sub_text)
         draw.text(((CANVAS_W - (bbox_sub[2] - bbox_sub[0])) / 2, 72), sub_text, fill=(185, 215, 245), font=font_sub)
 
-        # ۲. پنل‌های کناری
+        # ۲. پنل‌های کناری (آبی چپ، قرمز راست)
         PANEL_W = 210
         PANEL_H = 490
         PANEL_Y = 120
 
-        # پنل آبی (چپ)
+        # پنل آبی
         blue_box = [30, PANEL_Y, 30 + PANEL_W, PANEL_Y + PANEL_H]
         draw.rounded_rectangle(blue_box, radius=18, fill=(29, 133, 208, 255))
         draw.text((45, PANEL_Y + 16), fa("تیم آبی"), fill=(255, 255, 255), font=font_panel_title)
@@ -297,7 +297,7 @@ class PicturesRenderer:
         draw.text((45, PANEL_Y + 220), fa("جاسوس"), fill=(12, 50, 85), font=font_panel_section)
         draw.text((45, PANEL_Y + 248), fa(game.blue_spymaster["name"]), fill=(255, 255, 255), font=font_panel_title)
 
-        # پنل قرمز (راست)
+        # پنل قرمز
         red_box = [CANVAS_W - 30 - PANEL_W, PANEL_Y, CANVAS_W - 30, PANEL_Y + PANEL_H]
         draw.rounded_rectangle(red_box, radius=18, fill=(214, 48, 49, 255))
         draw.text((CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 16), fa("تیم قرمز"), fill=(255, 255, 255), font=font_panel_title)
@@ -326,7 +326,7 @@ class PicturesRenderer:
             draw.text((CANVAS_W - 30 - PANEL_W + 12, log_y), fa(entry), fill=(240, 245, 255), font=font_log)
             log_y += 22
 
-        # ۴. شبکه کارت‌های تصویری (اشغال ۶۴٪ عرض و ۷۰٪ ارتفاع)
+        # ۴. شبکه کارت‌های تصویری (بیش از ۶۰ درصد تصویر)
         CARD_W = 172
         CARD_H = 150
         GAP_X = 16
@@ -351,7 +351,7 @@ class PicturesRenderer:
             except Exception:
                 card_img = Image.new("RGBA", (CARD_W, CARD_H), (45, 55, 70, 255))
                 c_draw = ImageDraw.Draw(card_img)
-                c_draw.text((CARD_W//2 - 25, CARD_H//2 - 10), f"Card {card.index}", fill=(180, 190, 205))
+                c_draw.text((CARD_W // 2 - 25, CARD_H // 2 - 10), f"Card {card.index}", fill=(180, 190, 205))
 
             card_img.putalpha(mask)
 
@@ -366,7 +366,7 @@ class PicturesRenderer:
             else:
                 overlay_draw.rounded_rectangle([0, 0, CARD_W - 1, CARD_H - 1], radius=14, outline=(110, 140, 175, 200), width=2)
 
-            # دایره پلاک شماره کارت با تراز دقیق
+            # دایره پلاک شماره کارت
             badge_r = 16
             badge_cx = 24
             badge_cy = 24
@@ -425,7 +425,7 @@ class PicturesRenderer:
     @staticmethod
     def render_spymaster_key(game: PicturesGameSession) -> Image.Image:
         """
-        رندر اختصاصی نقشه برای جاسوس‌ها:
+        رندر اختصاصی نقشه کلید جاسوس:
         فقط و فقط ۲۰ تصویر و رنگ‌های مخفی در شبکه ۵×۴ (بدون هیچ پنل کناری یا کادر اضافی)
         """
         CARD_W = 220
@@ -474,13 +474,11 @@ class PicturesRenderer:
 
             card_color = COLOR_MAP[card.team] if card.team else COLOR_MAP[card.role]
 
-            # رنگ‌آمیزی نقشه کلید جاسوس با خط کادر پررنگ
-            overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(*card_color, 125))
+            overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(*card_color, 130))
             overlay_draw.rounded_rectangle([0, 0, CARD_W - 1, CARD_H - 1], radius=14, outline=(*card_color, 255), width=6)
 
-            # اگر کارت قبلاً انتخاب شده باشد، مات می‌شود و تیک سبز می‌خورد
             if card.revealed:
-                overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(10, 10, 10, 140))
+                overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(10, 10, 10, 150))
                 overlay_draw.ellipse([CARD_W - 42, 10, CARD_W - 10, 42], fill=(46, 204, 113, 230), outline=(255, 255, 255), width=2)
                 overlay_draw.text((CARD_W - 32, 12), "✓", fill=(255, 255, 255), font=font_card_num)
 
@@ -570,9 +568,10 @@ def _get_lobby_text(lobby: dict) -> str:
         f"🕵️‍♂️ جاسوس‌ارشد: <b>{html.escape(red_sm)}</b>\n"
         f"👥 ماموران: {html.escape(red_ops)}\n\n"
         "🔵 <b>تیم آبی:</b>\n"
-        f"🕵️‍♂️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
+        f"🕵️️‍♂️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
         f"👥 ماموران: {html.escape(blue_ops)}\n\n"
         "▫️ ابعاد تخته: ۵ ستون × ۴ ردیف (۲۰ تصویر)\n"
+        "▫️ مهلت تکمیل لابی: <b>۱۰ دقیقه</b> (با هر انتخاب تمدید می‌شود).\n"
         "▫️ شروع مسابقه نیازمند حداقل ۴ بازیکن (یک جاسوس‌ارشد و حداقل یک مامور برای هر تیم) است.\n"
         "⚠️ <b>توجه:</b> جاسوس‌های ارشد حتماً باید قبل از شروع، ربات را در پی‌وی Start کرده باشند."
     )
@@ -597,6 +596,7 @@ def _get_game_caption(game: PicturesGameSession, extra: str = "") -> str:
 
 
 async def _update_spymaster_maps(bot: Bot, game: PicturesGameSession):
+    """به‌روزرسانی خودکار و بی‌صدای نقشه محرمانه در پی‌وی جاسوس‌ها"""
     key_img = PicturesRenderer.render_spymaster_key(game)
     bio = BytesIO()
     key_img.save(bio, format="JPEG", quality=92)
@@ -634,12 +634,12 @@ async def _update_spymaster_maps(bot: Bot, game: PicturesGameSession):
 
 
 # =========================================================
-# هندلرهای مستقیم و بدون باگ پیش‌نمایش در پی‌وی
+# هندلرهای پیش‌نمایش در پی‌وی (در بالاترین اولویت)
 # =========================================================
 
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("تصویری" in t or "pictures" in t.lower())))
 async def preview_pictures_cmd(message: Message):
-    """پیش‌نمایش زنده تخته تصویری و نقشه اختصاصی در پی‌وی"""
+    """پیش‌نمایش زنده تخته مسابقه و نقشه جاسوس در پی‌وی"""
     pictures_path = os.path.join(os.getcwd(), "assets", "pictures")
     game = PicturesGameSession(
         pictures_dir=pictures_path,
@@ -683,7 +683,7 @@ async def preview_pictures_cmd(message: Message):
         "(تصویر ۱۴ : Sina)"
     ]
 
-    # ۱. ارسال تصویر تخته برای گروه
+    # ۱. تصویر تخته کامل برای گروه
     board_img = PicturesRenderer.render_board(game)
     bio = BytesIO()
     board_img.save(bio, format="JPEG", quality=95)
@@ -692,12 +692,12 @@ async def preview_pictures_cmd(message: Message):
 
     await message.answer_photo(
         photo=photo_file,
-        caption="🖼 <b>پیش‌نمایش تخته Codenames: Pictures برای گروه</b>\nشامل پنل‌های کناری، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ.",
+        caption="🖼 <b>پیش‌نمایش تخته Codenames: Pictures برای گروه</b>\nشامل پنل‌های دوطرفه، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ با اورلی کامل.",
         reply_markup=build_game_keyboard(game),
         parse_mode="HTML"
     )
 
-    # ۲. ارسال نقشه اختصاصی جاسوس‌ارشد (بدون پنل‌های کناری و بدون متن)
+    # ۲. نقشه اختصاصی جاسوس‌ارشد (بدون پنل‌های کناری و بدون متن)
     key_img = PicturesRenderer.render_spymaster_key(game)
     bio_k = BytesIO()
     key_img.save(bio_k, format="JPEG", quality=95)
@@ -777,7 +777,7 @@ async def preview_words_cmd(message: Message):
 
 
 # ==========================================
-# اجرای لابی و بازی اصلی در گروه‌ها
+# لابی و بازی اصلی در گروه‌ها
 # ==========================================
 
 @router.message(Command("pictures", "codenames_pictures"))
@@ -786,6 +786,7 @@ async def start_pictures_lobby_cmd(message: Message):
     chat_id = message.chat.id
     pic_lobbies[chat_id] = {
         "host_id": message.from_user.id,
+        "last_activity": time.time(),
         "red_spymaster": None,
         "blue_spymaster": None,
         "red_operatives": {},
@@ -818,9 +819,19 @@ async def start_pictures_lobby_cmd(message: Message):
 async def on_lobby_action(callback: CallbackQuery):
     chat_id = callback.message.chat.id
     lobby = pic_lobbies.get(chat_id)
+
+    # بررسی تایمر ۱۰ دقیقه‌ای
     if not lobby:
-        await callback.answer("لابی منقضی شده است. مجدداً دستور /pictures را بزنید.", show_alert=True)
+        await callback.answer("❌ لابی فعالی یافت نشد (احتمالاً بازی شروع یا ربات ری‌استارت شده است). لطفاً دوباره /pictures بزنید.", show_alert=True)
         return
+
+    if time.time() - lobby.get("last_activity", time.time()) > LOBBY_TIMEOUT_SECONDS:
+        pic_lobbies.pop(chat_id, None)
+        await callback.answer("⏳ لابی پس از ۱۰ دقیقه بی‌تحرکی منقضی شد. لطفاً دوباره /pictures را بزنید.", show_alert=True)
+        return
+
+    # تمدید خودکار تایمر لابی با هر کلیک بازیکنان
+    lobby["last_activity"] = time.time()
 
     user = callback.from_user
     uid = user.id
@@ -942,20 +953,14 @@ async def on_start_game(callback: CallbackQuery):
         await callback.answer(f"خطا در ایجاد بازی: {e}", show_alert=True)
         return
 
-    pic_games[chat_id] = game
-    pic_lobbies.pop(chat_id, None)
-
-    # ۱. ارسال خودکار نقشه به پی‌وی جاسوس‌ها با protect_content و بدون متن
-    await _update_spymaster_maps(callback.bot, game)
-
-    # ۲. رندر تخته مسابقه برای گروه
+    # ۱. رندر تخته مسابقه برای گروه
     board_img = PicturesRenderer.render_board(game)
     bio_board = BytesIO()
     board_img.save(bio_board, format="JPEG", quality=92)
     bio_board.seek(0)
     board_file = BufferedInputFile(bio_board.getvalue(), filename="board.jpg")
 
-    # ۳. ابتدا عکس به گروه ارسال می‌شود و سپس لابی حذف می‌گردد
+    # ۲. ابتدا عکس به گروه ارسال می‌شود
     try:
         await callback.bot.send_photo(
             chat_id=chat_id,
@@ -964,28 +969,22 @@ async def on_start_game(callback: CallbackQuery):
             reply_markup=build_game_keyboard(game),
             parse_mode="HTML"
         )
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
     except Exception as e:
-        logger.exception(f"Error sending group photo: {e}")
-        try:
-            # ارسال با حالت متن ساده در صورت بروز هر خطایی در تلگرام
-            await callback.bot.send_photo(
-                chat_id=chat_id,
-                photo=board_file,
-                caption=f"بازی Codenames: Pictures شروع شد!\nنوبت: {game.current_turn}",
-                reply_markup=build_game_keyboard(game)
-            )
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-        except Exception as e2:
-            await callback.answer(f"خطا در ارسال تصویر به گروه: {e2}", show_alert=True)
-            return
+        logger.exception(f"Error sending group board: {e}")
+        await callback.answer(f"خطا در ارسال تخته به گروه: {e}", show_alert=True)
+        return  # لابی به هیچ وجه پاک نمی‌شود تا بازیکنان بتوانند دوباره تلاش کنند
 
+    # ۳. پس از ارسال موفقیت‌آمیز به گروه، لابی بسته و بازی ثبت می‌شود
+    pic_games[chat_id] = game
+    pic_lobbies.pop(chat_id, None)
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    # ۴. ارسال خودکار نقشه به پی‌وی هر دو جاسوس‌ارشد بدون کپشن با protect_content
+    await _update_spymaster_maps(callback.bot, game)
     await callback.answer("بازی شروع شد!")
 
 
@@ -1058,13 +1057,13 @@ async def on_guess_card(callback: CallbackQuery):
     extra_msg = ""
     if winner:
         winner_fa = "تیم قرمز 🔴" if winner == TEAM_RED else "تیم آبی 🔵"
-        extra_msg = f"🏆 <b>پایان بازی! {winner_fa} برنده مسابقه شد!</b>"
+        extra_msg = f"🏆 **پایان بازی! {winner_fa} برنده مسابقه شد!**"
         pic_games.pop(chat_id, None)
 
-    # آپدیت بی‌صدا و زنده در پی‌وی هر دو جاسوس‌ارشد
+    # آپدیت بی‌صدا و پرایوسی در پی‌وی هر دو جاسوس‌ارشد
     await _update_spymaster_maps(callback.bot, game)
 
-    # بازتولید تخته گروه
+    # بازتولید تصویر تخته گروه
     board_img = PicturesRenderer.render_board(game)
     bio = BytesIO()
     board_img.save(bio, format="JPEG", quality=92)
