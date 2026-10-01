@@ -1,10 +1,12 @@
 """
 handlers/pictures.py
-ماژول کامل و مستقل Codenames: Pictures
-- رندر کامل تخته مسابقه برای گروه با پنل‌های دوطرفه، لاگ‌ها، باکس سرنخ و فونت پفک
-- رندر مجزا و اختصاصی نقشه جاسوس (فقط ۲۰ کارت بدون پنل، با ضربدر و کادر مشکی قاتل)
-- ارسال خودکار نقشه در پی‌وی با protect_content و آپدیت زنده
-- پیش‌نمایش کاملاً ایمن و بدون باگ در پی‌وی با کلمات «تصویری» و «کلماتی»
+ماژول کامل و بدون باگ Codenames: Pictures
+- رندر کامل با پنل‌های دوطرفه، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ
+- رسم دقیق خودِ کاراکترهای خاص (ß, æ, ä, $ و...) با سیستم Font Fallback و ایموجی‌های تمام‌رنگی
+- پس‌زمینه داینامیک بر اساس نوبت تیم (زرشکی برای قرمز / سرمه‌ای برای آبی / مشکی برای باخت با قاتل)
+- نقشه اختصاصی جاسوس‌ارشد بدون پنل همراه با کادر مشکی ضخیم برای قاتل و ضربدر روی کارت‌های بازشده
+- سیستم لابی تیمی پایدار با مهلت ۱۰ دقیقه‌ای
+- پیش‌نمایش کامل در پی‌وی با کلمات «تصویری» و «کلماتی» بدون هیچ خطایی
 """
 
 import os
@@ -47,7 +49,7 @@ ROLE_ASSASSIN = "ASSASSIN"
 TEAM_RED = "RED"
 TEAM_BLUE = "BLUE"
 
-# پالت رنگی استاندارد و دقیق
+# پالت رنگی استاندارد
 COLOR_MAP = {
     TEAM_RED: (220, 50, 50),
     TEAM_BLUE: (35, 125, 235),
@@ -58,9 +60,41 @@ COLOR_MAP = {
 pic_lobbies: Dict[int, Dict] = {}
 pic_games: Dict[int, "PicturesGameSession"] = {}
 
+# بررسی موتور رندر ایموجی رنگی
+try:
+    from pilmoji import Pilmoji
+    HAS_PILMOJI = True
+except ImportError:
+    HAS_PILMOJI = False
+
+
+def is_emoji_char(c: str) -> bool:
+    """تشخیص دقیق کاراکترهای ایموجی"""
+    if not c:
+        return False
+    cp = ord(c)
+    return (
+        0x1F300 <= cp <= 0x1F9FF or
+        0x1FA00 <= cp <= 0x1FAFF or
+        0x2600 <= cp <= 0x27BF or
+        0xFE00 <= cp <= 0xFE0F or
+        0x1F1E6 <= cp <= 0x1F1FF or
+        0x200D == cp
+    )
+
+
+def font_has_glyph(font: ImageFont.ImageFont, ch: str) -> bool:
+    """بررسی اینکه آیا فونت این کاراکتر را در خود دارد یا خیر"""
+    try:
+        if hasattr(font, "font") and hasattr(font.font, "has_glyph"):
+            return bool(font.font.has_glyph(ord(ch)))
+    except Exception:
+        pass
+    return True
+
 
 def fa(text: str) -> str:
-    """تنظیم و اتصال حروف فارسی بدون ریسک کرش"""
+    """آماده‌سازی متن فارسی و چیدمان بیدی بدون تغییر دادن کاراکترها"""
     if not text:
         return ""
     try:
@@ -75,6 +109,87 @@ def fa(text: str) -> str:
     except Exception:
         pass
     return str(text)
+
+
+def split_into_runs(text: str, font_p: ImageFont.ImageFont, font_f: ImageFont.ImageFont) -> List[Tuple[str, str]]:
+    """تجزیه متن به بخش‌های ایموجی، فونت اصلی پفک و فونت مکمل برای رسم دقیق خود کاراکترها"""
+    if not text:
+        return []
+    runs = []
+    curr_type = None
+    curr_chars = []
+
+    for ch in text:
+        if is_emoji_char(ch):
+            ch_type = 'emoji'
+        elif font_has_glyph(font_p, ch):
+            ch_type = 'primary'
+        else:
+            ch_type = 'fallback'
+
+        if ch_type == curr_type:
+            curr_chars.append(ch)
+        else:
+            if curr_chars:
+                runs.append((curr_type, "".join(curr_chars)))
+            curr_type = ch_type
+            curr_chars = [ch]
+
+    if curr_chars:
+        runs.append((curr_type, "".join(curr_chars)))
+    return runs
+
+
+def measure_runs(runs: List[Tuple[str, str]], font_p: ImageFont.ImageFont, font_f: ImageFont.ImageFont, font_size: int) -> float:
+    total_w = 0.0
+    for r_type, r_str in runs:
+        if r_type == 'emoji':
+            total_w += font_size * 1.15
+        elif r_type == 'primary':
+            total_w += font_p.getlength(r_str)
+        else:
+            total_w += font_f.getlength(r_str)
+    return total_w
+
+
+def draw_text_smart(
+    target_img: Image.Image,
+    draw_obj: ImageDraw.Draw,
+    pos: Tuple[float, float],
+    text: str,
+    fill: tuple,
+    font_p: ImageFont.ImageFont,
+    font_f: ImageFont.ImageFont,
+    font_size: int,
+    align_center: bool = False
+):
+    """رسم واقعی هر کاراکتر و نماد بدون جایگزین‌سازی و بدون رسم مربع خالی"""
+    if not text:
+        return
+    runs = split_into_runs(text, font_p, font_f)
+    total_w = measure_runs(runs, font_p, font_f, font_size)
+    x, y = pos
+    if align_center:
+        x = x - total_w / 2
+
+    curr_x = x
+    for r_type, r_str in runs:
+        if r_type == 'emoji':
+            if HAS_PILMOJI:
+                try:
+                    with Pilmoji(target_img) as pdraw:
+                        pdraw.text((curr_x, y), r_str, fill=fill, font=font_p)
+                except Exception:
+                    draw_obj.text((curr_x, y), r_str, fill=fill, font=font_f)
+            else:
+                draw_obj.text((curr_x, y), r_str, fill=fill, font=font_f)
+            curr_x += font_size * 1.15
+        elif r_type == 'primary':
+            draw_obj.text((curr_x, y), r_str, fill=fill, font=font_p)
+            curr_x += font_p.getlength(r_str)
+        else:
+            draw_obj.text((curr_x, y), r_str, fill=fill, font=font_f)
+            curr_x += font_f.getlength(r_str)
 
 
 class PictureCard:
@@ -228,9 +343,8 @@ class PicturesRenderer:
         CANVAS_W = 1440
         CANVAS_H = 940
 
-        # تغییر رنگ پس‌زمینه بر اساس نوبت تیم یا باخت با قاتل
         if game.assassin_revealed:
-            bg_color = (24, 25, 29, 255)         # مشکی زغالی ملایم
+            bg_color = (24, 25, 29, 255)         # مشکی زغالی ملایم در باخت با کارت سیاه
             dot_color = (48, 50, 58, 180)
         elif game.winner == TEAM_RED or (not game.winner and game.current_turn == TEAM_RED):
             bg_color = (88, 18, 26, 255)         # زرشکی شیک در نوبت قرمز
@@ -261,17 +375,54 @@ class PicturesRenderer:
                     pass
             return ImageFont.load_default()
 
-        # فونت‌های درشت‌تر و خوانا
+        def load_fallback_font(size: int):
+            candidates = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+                "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "arialbd.ttf",
+                "arial.ttf",
+                "segoeui.ttf",
+                "tahoma.ttf",
+            ]
+            for p in candidates:
+                if os.path.exists(p) or not p.startswith("/"):
+                    try:
+                        return ImageFont.truetype(p, size)
+                    except Exception:
+                        pass
+            return load_font("Pofak-Medium.ttf", size)
+
+        # بارگذاری فونت‌های اصلی و مکمل
         font_header = load_font("Pofak-ExtraBold.ttf", 40)
+        font_fb_header = load_fallback_font(40)
+
         font_sub = load_font("Pofak-Medium.ttf", 22)
+        font_fb_sub = load_fallback_font(22)
+
         font_panel_title = load_font("Pofak-ExtraBold.ttf", 28)
+        font_fb_panel_title = load_fallback_font(28)
+
         font_panel_section = load_font("Pofak-DemiBold.ttf", 21)
+        font_fb_panel_section = load_fallback_font(21)
+
         font_panel_text = load_font("Pofak-Medium.ttf", 19)
+        font_fb_panel_text = load_fallback_font(19)
+
         font_badge = load_font("Pofak-ExtraBold.ttf", 22)
+        font_fb_badge = load_fallback_font(22)
+
         font_card_num = load_font("Pofak-ExtraBold.ttf", 24)
         font_clue = load_font("Pofak-ExtraBold.ttf", 28)
-        font_log = load_font("Pofak-Medium.ttf", 17)
+        font_fb_clue = load_fallback_font(28)
 
+        font_log = load_font("Pofak-Medium.ttf", 17)
+        font_fb_log = load_fallback_font(17)
+
+        # ۱. بنر وضعیت در بالای تصویر
         if game.winner:
             if game.assassin_revealed:
                 winner_team = "آبی" if game.winner == TEAM_BLUE else "قرمز"
@@ -283,16 +434,14 @@ class PicturesRenderer:
             turn_text = "نوبت تیم قرمز" if game.current_turn == TEAM_RED else "نوبت تیم آبی"
             h_text = fa(turn_text)
 
-        bbox_h = font_header.getbbox(h_text)
-        draw.text(((CANVAS_W - (bbox_h[2] - bbox_h[0])) / 2, 20), h_text, fill=(255, 255, 255), font=font_header)
+        draw_text_smart(board, draw, (CANVAS_W / 2, 20), h_text, (255, 255, 255), font_header, font_fb_header, 40, align_center=True)
 
         if game.current_turn == TEAM_RED:
             sub_names = f"{game.red_spymaster['name']} • " + " ، ".join(list(game.red_operatives.values())[:3])
         else:
             sub_names = f"{game.blue_spymaster['name']} • " + " ، ".join(list(game.blue_operatives.values())[:3])
         sub_text = fa(sub_names)
-        bbox_sub = font_sub.getbbox(sub_text)
-        draw.text(((CANVAS_W - (bbox_sub[2] - bbox_sub[0])) / 2, 70), sub_text, fill=(220, 235, 255), font=font_sub)
+        draw_text_smart(board, draw, (CANVAS_W / 2, 70), sub_text, (220, 235, 255), font_sub, font_fb_sub, 22, align_center=True)
 
         PANEL_W = 215
         PANEL_H = 490
@@ -301,51 +450,51 @@ class PicturesRenderer:
         # پنل آبی
         blue_box = [30, PANEL_Y, 30 + PANEL_W, PANEL_Y + PANEL_H]
         draw.rounded_rectangle(blue_box, radius=18, fill=(29, 133, 208, 255))
-        draw.text((45, PANEL_Y + 14), fa("تیم آبی"), fill=(255, 255, 255), font=font_panel_title)
+        draw_text_smart(board, draw, (45, PANEL_Y + 14), fa("تیم آبی"), (255, 255, 255), font_panel_title, font_fb_panel_title, 28)
         draw.ellipse([200, PANEL_Y + 14, 232, PANEL_Y + 46], fill=(255, 255, 255, 255))
         rem_blue_str = str(game.blue_remaining)
         rb_box = font_badge.getbbox(rem_blue_str)
-        draw.text((216 - (rb_box[0] + rb_box[2]) / 2, PANEL_Y + 30 - (rb_box[1] + rb_box[3]) / 2), rem_blue_str, fill=(29, 133, 208), font=font_badge)
+        draw_text_smart(board, draw, (216 - (rb_box[0] + rb_box[2]) / 2, PANEL_Y + 30 - (rb_box[1] + rb_box[3]) / 2), rem_blue_str, (29, 133, 208), font_badge, font_fb_badge, 22)
 
-        draw.text((45, PANEL_Y + 74), fa("مامورین حدس"), fill=(12, 50, 85), font=font_panel_section)
+        draw_text_smart(board, draw, (45, PANEL_Y + 74), fa("مامورین حدس"), (12, 50, 85), font_panel_section, font_fb_panel_section, 21)
         op_y = PANEL_Y + 104
         for op in list(game.blue_operatives.values())[:4]:
-            draw.text((45, op_y), fa(op), fill=(255, 255, 255), font=font_panel_text)
+            draw_text_smart(board, draw, (45, op_y), fa(op), (255, 255, 255), font_panel_text, font_fb_panel_text, 19)
             op_y += 28
 
-        draw.text((45, PANEL_Y + 230), fa("جاسوس"), fill=(12, 50, 85), font=font_panel_section)
-        draw.text((45, PANEL_Y + 262), fa(game.blue_spymaster["name"]), fill=(255, 255, 255), font=font_panel_title)
+        draw_text_smart(board, draw, (45, PANEL_Y + 230), fa("جاسوس"), (12, 50, 85), font_panel_section, font_fb_panel_section, 21)
+        draw_text_smart(board, draw, (45, PANEL_Y + 262), fa(game.blue_spymaster["name"]), (255, 255, 255), font_panel_title, font_fb_panel_title, 28)
 
         # پنل قرمز
         red_box = [CANVAS_W - 30 - PANEL_W, PANEL_Y, CANVAS_W - 30, PANEL_Y + PANEL_H]
         draw.rounded_rectangle(red_box, radius=18, fill=(214, 48, 49, 255))
-        draw.text((CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 14), fa("تیم قرمز"), fill=(255, 255, 255), font=font_panel_title)
+        draw_text_smart(board, draw, (CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 14), fa("تیم قرمز"), (255, 255, 255), font_panel_title, font_fb_panel_title, 28)
         draw.ellipse([CANVAS_W - 62, PANEL_Y + 14, CANVAS_W - 30, PANEL_Y + 46], fill=(255, 255, 255, 255))
         rem_red_str = str(game.red_remaining)
         rr_box = font_badge.getbbox(rem_red_str)
-        draw.text((CANVAS_W - 46 - (rr_box[0] + rr_box[2]) / 2, PANEL_Y + 30 - (rr_box[1] + rr_box[3]) / 2), rem_red_str, fill=(214, 48, 49), font=font_badge)
+        draw_text_smart(board, draw, (CANVAS_W - 46 - (rr_box[0] + rr_box[2]) / 2, PANEL_Y + 30 - (rr_box[1] + rr_box[3]) / 2), rem_red_str, (214, 48, 49), font_badge, font_fb_badge, 22)
 
-        draw.text((CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 74), fa("مامورین حدس"), fill=(85, 12, 12), font=font_panel_section)
+        draw_text_smart(board, draw, (CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 74), fa("مامورین حدس"), (85, 12, 12), font_panel_section, font_fb_panel_section, 21)
         op_y = PANEL_Y + 104
         for op in list(game.red_operatives.values())[:4]:
-            draw.text((CANVAS_W - 30 - PANEL_W + 15, op_y), fa(op), fill=(255, 255, 255), font=font_panel_text)
+            draw_text_smart(board, draw, (CANVAS_W - 30 - PANEL_W + 15, op_y), fa(op), (255, 255, 255), font_panel_text, font_fb_panel_text, 19)
             op_y += 28
 
-        draw.text((CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 230), fa("جاسوس"), fill=(85, 12, 12), font=font_panel_section)
-        draw.text((CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 262), fa(game.red_spymaster["name"]), fill=(255, 255, 255), font=font_panel_title)
+        draw_text_smart(board, draw, (CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 230), fa("جاسوس"), (85, 12, 12), font_panel_section, font_fb_panel_section, 21)
+        draw_text_smart(board, draw, (CANVAS_W - 30 - PANEL_W + 15, PANEL_Y + 262), fa(game.red_spymaster["name"]), (255, 255, 255), font_panel_title, font_fb_panel_title, 28)
 
-        # لاگ حدس‌های هر تیم
+        # ۳. لاگ حدس‌های هر تیم
         log_y = PANEL_Y + PANEL_H + 18
         for entry in game.logs[TEAM_BLUE][-6:]:
-            draw.text((32, log_y), fa(entry), fill=(245, 248, 255), font=font_log)
+            draw_text_smart(board, draw, (32, log_y), fa(entry), (245, 248, 255), font_log, font_fb_log, 17)
             log_y += 26
 
         log_y = PANEL_Y + PANEL_H + 18
         for entry in game.logs[TEAM_RED][-6:]:
-            draw.text((CANVAS_W - 30 - PANEL_W + 12, log_y), fa(entry), fill=(245, 248, 255), font=font_log)
+            draw_text_smart(board, draw, (CANVAS_W - 30 - PANEL_W + 12, log_y), fa(entry), (245, 248, 255), font_log, font_fb_log, 17)
             log_y += 26
 
-        # شبکه کارت‌های تصویری
+        # ۴. شبکه کارت‌های تصویری
         CARD_W = 172
         CARD_H = 150
         GAP_X = 16
@@ -405,7 +554,7 @@ class PicturesRenderer:
             card_composite = Image.alpha_composite(card_img, overlay)
             board.paste(card_composite, (x, y), mask)
 
-        # باکس سرنخ و تعداد
+        # ۵. باکس سرنخ و تعداد
         CLUE_BOX_W = 320
         CLUE_BOX_H = 54
         CLUE_COUNT_W = 54
@@ -418,24 +567,32 @@ class PicturesRenderer:
 
         clue_display = game.current_clue if game.current_clue else "در انتظار سرنخ..."
         clue_fa = fa(clue_display)
-        c_box = font_clue.getbbox(clue_fa)
-        draw.text(
-            (CLUE_START_X + (CLUE_BOX_W - (c_box[2] - c_box[0])) / 2, CLUE_Y + 10),
+        draw_text_smart(
+            board,
+            draw,
+            (CLUE_START_X + CLUE_BOX_W / 2, CLUE_Y + 12),
             clue_fa,
-            fill=(30, 39, 46),
-            font=font_clue
+            (30, 39, 46),
+            font_clue,
+            font_fb_clue,
+            28,
+            align_center=True
         )
 
         count_rect = [CLUE_START_X + CLUE_BOX_W + 12, CLUE_Y, CLUE_START_X + TOTAL_CLUE_W, CLUE_Y + CLUE_BOX_H]
         draw.rounded_rectangle(count_rect, radius=14, fill=(255, 255, 255, 255))
 
         count_display = str(game.current_count) if game.current_count is not None else "—"
-        cnt_box = font_clue.getbbox(count_display)
-        draw.text(
-            (count_rect[0] + (CLUE_COUNT_W - (cnt_box[2] - cnt_box[0])) / 2, CLUE_Y + 10),
+        draw_text_smart(
+            board,
+            draw,
+            (count_rect[0] + CLUE_COUNT_W / 2, CLUE_Y + 12),
             count_display,
-            fill=(30, 39, 46),
-            font=font_clue
+            (30, 39, 46),
+            font_clue,
+            font_fb_clue,
+            28,
+            align_center=True
         )
 
         return board.convert("RGB")
@@ -488,7 +645,6 @@ class PicturesRenderer:
             overlay_draw = ImageDraw.Draw(overlay)
 
             card_color = COLOR_MAP[card.team] if card.team else COLOR_MAP[card.role]
-
             overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(*card_color, 125))
 
             # کادر دور کارت (برای قاتل مشکی ضخیم و پررنگ)
@@ -595,7 +751,7 @@ def _get_lobby_text(lobby: dict) -> str:
         f"🕵️‍♂️ جاسوس‌ارشد: <b>{html.escape(red_sm)}</b>\n"
         f"👥 ماموران: {html.escape(red_ops)}\n\n"
         "🔵 <b>تیم آبی:</b>\n"
-        f"🕵‍♂️️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
+        f"🕵‍♂️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
         f"👥 ماموران: {html.escape(blue_ops)}\n\n"
         "▫️ ابعاد تخته: ۵ ستون × ۴ ردیف (۲۰ تصویر)\n"
         "▫️ مهلت تکمیل لابی: <b>۱۰ دقیقه</b> (با هر انتخاب تمدید می‌شود).\n"
@@ -614,7 +770,7 @@ def _get_game_caption(game: PicturesGameSession, extra: str = "") -> str:
         f"👑 نوبت: <b>{turn_fa}</b>\n\n"
         f"🔴 اهداف قرمز: <b>{game.red_remaining}</b> (جاسوس‌ارشد: {red_sm})\n"
         f"🔵 اهداف آبی: <b>{game.blue_remaining}</b> (جاسوس‌ارشد: {blue_sm})\n\n"
-        f"نوبت جاسوس‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
+        f"نوبت جاسوس‌‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
         f"ماموران برای حدس تصویر روی شماره آن کلیک کنند:"
     )
     if extra:
@@ -665,14 +821,14 @@ async def _update_spymaster_maps(bot: Bot, game: PicturesGameSession):
 
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("تصویری" in t or "pictures" in t.lower())))
 async def preview_pictures_cmd(message: Message):
-    """پیش‌نمایش زنده تخته تصویری و نقشه اختصاصی جاسوس در پی‌وی"""
+    """پیش‌‌نمایش زنده تخته تصویری و نقشه اختصاصی جاسوس در پی‌وی"""
     pictures_path = os.path.join(os.getcwd(), "assets", "pictures")
     game = PicturesGameSession(
         pictures_dir=pictures_path,
-        red_spymaster={"id": message.from_user.id, "name": "Mahsa"},
-        blue_spymaster={"id": message.from_user.id, "name": "ERFAN"},
-        red_operatives={3: "Abolfazl", 4: "Sina"},
-        blue_operatives={5: "Flora", 6: "Ali"}
+        red_spymaster={"id": message.from_user.id, "name": "Mahsa 👑 ßä"},
+        blue_spymaster={"id": message.from_user.id, "name": "ERFAN ⭐️ æ"},
+        red_operatives={3: "Abolfazl 🦁 $", 4: "Sina ⚡️"},
+        blue_operatives={5: "Flora 🌸", 6: "Ali 🔥"}
     )
     game.starter_team = TEAM_BLUE
     game.second_team = TEAM_RED
@@ -686,29 +842,29 @@ async def preview_pictures_cmd(message: Message):
         game.cards[0].role = ROLE_STARTER_AGENT
         game.cards[0].team = TEAM_BLUE
         game.cards[0].revealed_by_team = TEAM_RED
-        game.cards[0].revealed_by_player = "Abolfazl"
+        game.cards[0].revealed_by_player = "Abolfazl 🦁 $"
 
         game.cards[1].revealed = True
         game.cards[1].role = ROLE_SECOND_AGENT
         game.cards[1].team = TEAM_RED
         game.cards[1].revealed_by_team = TEAM_RED
-        game.cards[1].revealed_by_player = "Sina"
+        game.cards[1].revealed_by_player = "Sina ⚡️"
 
         game.cards[2].revealed = True
         game.cards[2].role = ROLE_BYSTANDER
         game.cards[2].team = None
         game.cards[2].revealed_by_team = TEAM_BLUE
-        game.cards[2].revealed_by_player = "Flora"
+        game.cards[2].revealed_by_player = "Flora 🌸"
 
         game.cards[3].role = ROLE_ASSASSIN
         game.cards[3].team = None
 
     game.logs[TEAM_BLUE] = [
-        "(تصویر ۳ : Flora)"
+        "(تصویر ۳ : Flora 🌸)"
     ]
     game.logs[TEAM_RED] = [
-        "(تصویر ۱ : Abolfazl)",
-        "(تصویر ۲ : Sina)"
+        "(تصویر ۱ : Abolfazl 🦁 $)",
+        "(تصویر ۲ : Sina ⚡️)"
     ]
 
     board_img = PicturesRenderer.render_board(game)
@@ -719,7 +875,7 @@ async def preview_pictures_cmd(message: Message):
 
     await message.answer_photo(
         photo=photo_file,
-        caption="🖼 <b>پیش‌نمایش تخته Codenames: Pictures برای گروه</b>\nشامل پس‌زمینه رنگ نوبت، پنل‌ها، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ.",
+        caption="🖼 <b>پیش‌نمایش تخته Codenames: Pictures برای گروه</b>\nشامل پس‌‌زمینه رنگ نوبت، پنل‌ها، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ.",
         reply_markup=build_game_keyboard(game),
         parse_mode="HTML"
     )
@@ -737,7 +893,6 @@ async def preview_pictures_cmd(message: Message):
     )
 
 
-# کلاس‌های کمکی برای سازگاری کامل با موتور کلماتی (هم به صورت دیکشنری و هم به صورت آبجکت)
 class UniversalCard(dict):
     def __getattr__(self, name):
         return self.get(name)
@@ -763,7 +918,7 @@ class UniversalLog(dict):
 
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("کلماتی" in t or "words" in t.lower())))
 async def preview_words_cmd(message: Message):
-    """پیش‌نمایش تخته کلماتی فعلی پروژه با تامین دیکشنری‌های سازگار"""
+    """پیش‌نمایش تخته کلماتی با تطبیق دقیق داده‌های ورودی"""
     try:
         import game.state as gs
         import imaging.board_renderer as br
@@ -976,7 +1131,7 @@ async def on_lobby_action(callback: CallbackQuery):
             return
         _remove_user()
         lobby["blue_spymaster"] = {"id": uid, "name": uname}
-        await callback.answer("به‌عنوان جاسوس‌ارشد آبی انتخاب شدید!")
+        await callback.answer("به‌عنوان جاسوس‌‌ارشد آبی انتخاب شدید!")
     elif action == "pic_op_red":
         _remove_user()
         lobby["red_operatives"][uid] = uname
@@ -1059,7 +1214,6 @@ async def on_start_game(callback: CallbackQuery):
         await callback.answer(f"خطا در ایجاد بازی: {e}", show_alert=True)
         return
 
-    # رندر تخته مسابقه برای گروه
     board_img = PicturesRenderer.render_board(game)
     bio_board = BytesIO()
     board_img.save(bio_board, format="JPEG", quality=92)
@@ -1087,7 +1241,6 @@ async def on_start_game(callback: CallbackQuery):
     except Exception:
         pass
 
-    # ارسال خودکار نقشه به پی‌وی هر دو جاسوس‌ارشد بدون کپشن با protect_content
     await _update_spymaster_maps(callback.bot, game)
     await callback.answer("بازی شروع شد!")
 
