@@ -15,7 +15,6 @@ import random
 import logging
 import inspect
 from io import BytesIO
-from types import SimpleNamespace
 from typing import List, Dict, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
@@ -229,14 +228,15 @@ class PicturesRenderer:
         CANVAS_W = 1440
         CANVAS_H = 940
 
+        # تغییر رنگ پس‌زمینه بر اساس نوبت تیم یا باخت با قاتل
         if game.assassin_revealed:
-            bg_color = (24, 25, 29, 255)
+            bg_color = (24, 25, 29, 255)         # مشکی زغالی ملایم
             dot_color = (48, 50, 58, 180)
         elif game.winner == TEAM_RED or (not game.winner and game.current_turn == TEAM_RED):
-            bg_color = (88, 18, 26, 255)
+            bg_color = (88, 18, 26, 255)         # زرشکی شیک در نوبت قرمز
             dot_color = (135, 32, 42, 180)
         else:
-            bg_color = (11, 47, 82, 255)
+            bg_color = (11, 47, 82, 255)         # سرمه‌ای در نوبت آبی
             dot_color = (25, 75, 120, 180)
 
         board = Image.new("RGBA", (CANVAS_W, CANVAS_H), bg_color)
@@ -261,6 +261,7 @@ class PicturesRenderer:
                     pass
             return ImageFont.load_default()
 
+        # فونت‌های درشت‌تر و خوانا
         font_header = load_font("Pofak-ExtraBold.ttf", 40)
         font_sub = load_font("Pofak-Medium.ttf", 22)
         font_panel_title = load_font("Pofak-ExtraBold.ttf", 28)
@@ -594,7 +595,7 @@ def _get_lobby_text(lobby: dict) -> str:
         f"🕵️‍♂️ جاسوس‌ارشد: <b>{html.escape(red_sm)}</b>\n"
         f"👥 ماموران: {html.escape(red_ops)}\n\n"
         "🔵 <b>تیم آبی:</b>\n"
-        f"🕵‍♂️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
+        f"🕵‍♂️️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
         f"👥 ماموران: {html.escape(blue_ops)}\n\n"
         "▫️ ابعاد تخته: ۵ ستون × ۴ ردیف (۲۰ تصویر)\n"
         "▫️ مهلت تکمیل لابی: <b>۱۰ دقیقه</b> (با هر انتخاب تمدید می‌شود).\n"
@@ -613,7 +614,7 @@ def _get_game_caption(game: PicturesGameSession, extra: str = "") -> str:
         f"👑 نوبت: <b>{turn_fa}</b>\n\n"
         f"🔴 اهداف قرمز: <b>{game.red_remaining}</b> (جاسوس‌ارشد: {red_sm})\n"
         f"🔵 اهداف آبی: <b>{game.blue_remaining}</b> (جاسوس‌ارشد: {blue_sm})\n\n"
-        f"نوبت جاسوس‌‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
+        f"نوبت جاسوس‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
         f"ماموران برای حدس تصویر روی شماره آن کلیک کنند:"
     )
     if extra:
@@ -710,7 +711,6 @@ async def preview_pictures_cmd(message: Message):
         "(تصویر ۲ : Sina)"
     ]
 
-    # ۱. تخته مسابقه گروه
     board_img = PicturesRenderer.render_board(game)
     bio = BytesIO()
     board_img.save(bio, format="JPEG", quality=95)
@@ -724,7 +724,6 @@ async def preview_pictures_cmd(message: Message):
         parse_mode="HTML"
     )
 
-    # ۲. نقشه محرمانه اختصاصی جاسوس‌ارشد
     key_img = PicturesRenderer.render_spymaster_key(game)
     bio_k = BytesIO()
     key_img.save(bio_k, format="JPEG", quality=95)
@@ -738,32 +737,36 @@ async def preview_pictures_cmd(message: Message):
     )
 
 
-# کلاس کمکی هوشمند برای لاگ حدس‌ها (سازگار هم به عنوان Tuple و هم به عنوان Object)
-class GuessLogEntry(tuple):
-    def __new__(cls, word, player):
-        return super().__new__(cls, (word, player))
-    @property
-    def word(self):
-        return self[0]
-    @property
-    def player(self):
-        return self[1]
+# کلاس‌های کمکی برای سازگاری کامل با موتور کلماتی (هم به صورت دیکشنری و هم به صورت آبجکت)
+class UniversalCard(dict):
+    def __getattr__(self, name):
+        return self.get(name)
+    def __setattr__(self, name, value):
+        self[name] = value
+
+class UniversalLog(dict):
+    def __init__(self, word, player):
+        super().__init__(word=word, player=player)
+        self.word = word
+        self.player = player
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return [self["word"], self["player"]][item]
+        return super().__getitem__(item)
+    def __iter__(self):
+        return iter([self["word"], self["player"]])
+    def __len__(self):
+        return 2
     def __str__(self):
-        return f"({self[0]}:{self[1]})"
+        return f"({self['word']}:{self['player']})"
 
 
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("کلماتی" in t or "words" in t.lower())))
 async def preview_words_cmd(message: Message):
-    """پیش‌نمایش تخته کلماتی فعلی پروژه با تامین کامل تمام پارامترهای لازم"""
+    """پیش‌نمایش تخته کلماتی فعلی پروژه با تامین دیکشنری‌های سازگار"""
     try:
         import game.state as gs
         import imaging.board_renderer as br
-
-        CardCls = None
-        for name, obj in inspect.getmembers(gs, inspect.isclass):
-            if "card" in name.lower():
-                CardCls = obj
-                break
 
         RoleCls = getattr(gs, "CardRole", None) or getattr(gs, "Role", None)
         TeamCls = getattr(gs, "Team", None)
@@ -811,33 +814,22 @@ async def preview_words_cmd(message: Message):
                 "revealed": rev, "revealed_by": "ERFAN",
                 "team": team_blue if r == r_blue else (team_red if r == r_red else None)
             }
-            if CardCls:
-                try:
-                    sig_c = inspect.signature(CardCls.__init__)
-                    p_valid = [p for p in sig_c.parameters.keys() if p != "self"]
-                    filtered_c = {k: v for k, v in c_info.items() if k in p_valid}
-                    cards.append(CardCls(**filtered_c))
-                except Exception:
-                    cards.append(SimpleNamespace(**c_info))
-            else:
-                cards.append(SimpleNamespace(**c_info))
+            cards.append(UniversalCard(**c_info))
 
-        # ساخت آیتم‌های لاگ سازگار
         r_log = [
-            GuessLogEntry("بازداشتگاه", "Mahsa"),
-            GuessLogEntry("محرم", "Mahsa"),
-            GuessLogEntry("زرنگی", "Mahsa")
+            UniversalLog("بازداشتگاه", "Mahsa"),
+            UniversalLog("محرم", "Mahsa"),
+            UniversalLog("زرنگی", "Mahsa")
         ]
         b_log = [
-            GuessLogEntry("دوچرخه", "ERFAN"),
-            GuessLogEntry("نوکیسه", "ERFAN"),
-            GuessLogEntry("خیابان", "ERFAN")
+            UniversalLog("دوچرخه", "ERFAN"),
+            UniversalLog("نوکیسه", "ERFAN"),
+            UniversalLog("خیابان", "ERFAN")
         ]
 
-        # تامین تمام آرگومان‌های احتمالی و پوزیشنال تابع render_board کلماتی
         call_kwargs = {
-            "cards": cards,
             "board": cards,
+            "cards": cards,
             "current_turn": team_blue,
             "turn_team": team_blue,
             "round_number": 1,
@@ -861,14 +853,11 @@ async def preview_words_cmd(message: Message):
             "blue_guessers": ["ERFAN"],
         }
 
-        # بررسی سیگنیچر و پر کردن فیلتر شده آرگومان‌ها
         sig_r = inspect.signature(br.render_board)
         p_names = list(sig_r.parameters.keys())
-        filtered_kwargs = {k: v for k, v in call_kwargs.items() if k in p_names}
-
-        # اگر پارامتری در لیست سیگنیچر بود ولی مقدار نداشت، با مقدار پیش‌فرض پر می‌کنیم
+        filtered_kwargs = {}
         for p in p_names:
-            if p not in filtered_kwargs and p in call_kwargs:
+            if p in call_kwargs:
                 filtered_kwargs[p] = call_kwargs[p]
 
         result = br.render_board(**filtered_kwargs)
@@ -1070,6 +1059,7 @@ async def on_start_game(callback: CallbackQuery):
         await callback.answer(f"خطا در ایجاد بازی: {e}", show_alert=True)
         return
 
+    # رندر تخته مسابقه برای گروه
     board_img = PicturesRenderer.render_board(game)
     bio_board = BytesIO()
     board_img.save(bio_board, format="JPEG", quality=92)
