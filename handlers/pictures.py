@@ -1,14 +1,16 @@
 """
 handlers/pictures.py
-ماژول کامل و مستقل Codenames: Pictures
-- رندر کامل با پنل‌های دوطرفه، لاگ حدس‌ها، کادر سرنخ و پلاک اعداد تراز شده
-- سیستم لابی تیمی (جاسوس‌ارشد و مامور) با شرط حداقل ۴ نفر
-- ارسال خودکار نقشه به پی‌وی جاسوس‌ها با protect_content و بدون متن
-- پیش‌نمایش مستقیم و بدون باگ در پی‌وی با کلمات: «ارسال حالت تصویری» و «ارسال حالت کلماتی»
+ماژول کامل و بدون باگ Codenames: Pictures
+- رندر کامل تخته مسابقه برای گروه با پنل‌های دوطرفه، لاگ‌ها، باکس سرنخ و فونت پفک
+- رندر مجزا و اختصاصی نقشه جاسوس (فقط ۲۰ تصویر و رنگ‌های مخفی بدون هیچ پنل یا نوشته)
+- ارسال خودکار نقشه در پی‌وی بدون متن با protect_content و آپدیت زنده و بی‌صدا
+- لابی استاندارد تیمی با شرط حداقل ۴ نفر
+- پاسخ‌دهی قطعی به پیام‌های پیش‌نمایش در پی‌وی
 """
 
 import os
 import glob
+import html
 import random
 import logging
 from io import BytesIO
@@ -43,35 +45,33 @@ ROLE_ASSASSIN = "ASSASSIN"
 TEAM_RED = "RED"
 TEAM_BLUE = "BLUE"
 
-# پالت رنگی استاندارد و اصلاح‌شده
+# پالت رنگی مورد نظر: قرمز، آبی، کرمی خاکی، مشکی زغالی
 COLOR_MAP = {
     TEAM_RED: (220, 50, 50),
     TEAM_BLUE: (35, 125, 235),
-    ROLE_BYSTANDER: (210, 190, 155),  # کرمی-خاکی برای شهروند بی‌طرف
-    ROLE_ASSASSIN: (20, 20, 25),      # مشکی زغالی برای قاتل
+    ROLE_BYSTANDER: (210, 190, 155),
+    ROLE_ASSASSIN: (20, 20, 25),
 }
 
 pic_lobbies: Dict[int, Dict] = {}
 pic_games: Dict[int, "PicturesGameSession"] = {}
 
-# سیستم اتصال حروف فارسی به صورت کاملاً ایمن
-try:
-    import arabic_reshaper
-    from bidi.algorithm import get_display
-    HAS_BIDI = True
-except ImportError:
-    HAS_BIDI = False
-
 
 def fa(text: str) -> str:
-    """تنظیم و اتصال حروف فارسی بدون ایجاد کرش"""
+    """تنظیم و اتصال حروف فارسی بدون ریسک کرش پایتون"""
     if not text:
         return ""
-    if HAS_BIDI:
-        try:
-            return get_display(arabic_reshaper.reshape(str(text)))
-        except Exception:
-            return str(text)
+    try:
+        from imaging.text_safe import prepare_text
+        return prepare_text(str(text))
+    except Exception:
+        pass
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+        return get_display(arabic_reshaper.reshape(str(text)))
+    except Exception:
+        pass
     return str(text)
 
 
@@ -120,6 +120,7 @@ class PicturesGameSession:
 
         selected_images = random.sample(all_images, TOTAL_PICTURES)
 
+        # تقسیم دقیق نقش‌ها: ۸ تیم اول، ۷ تیم دوم، ۴ بی‌طرف، ۱ قاتل
         roles = (
             [ROLE_STARTER_AGENT] * 8 +
             [ROLE_SECOND_AGENT] * 7 +
@@ -215,13 +216,15 @@ class PicturesGameSession:
 
 class PicturesRenderer:
     @staticmethod
-    def render_board(game: PicturesGameSession, is_spymaster: bool = False) -> Image.Image:
+    def render_board(game: PicturesGameSession) -> Image.Image:
+        """رندر تخته کامل برای گروه با پنل‌های کناری، لاگ‌ها و سرنخ"""
         CANVAS_W = 1440
         CANVAS_H = 920
 
         board = Image.new("RGBA", (CANVAS_W, CANVAS_H), (11, 47, 82, 255))
         draw = ImageDraw.Draw(board)
 
+        # رسم شبکه نقطه‌ای پس‌زمینه
         dot_color = (25, 75, 120, 180)
         for dx in range(12, CANVAS_W, 24):
             for dy in range(12, CANVAS_H, 24):
@@ -323,10 +326,10 @@ class PicturesRenderer:
             draw.text((CANVAS_W - 30 - PANEL_W + 12, log_y), fa(entry), fill=(240, 245, 255), font=font_log)
             log_y += 22
 
-        # ۴. شبکه کارت‌های تصویری (بیش از ۶۰٪ صفحه)
-        CARD_W = 168
-        CARD_H = 148
-        GAP_X = 18
+        # ۴. شبکه کارت‌های تصویری (اشغال ۶۴٪ عرض و ۷۰٪ ارتفاع)
+        CARD_W = 172
+        CARD_H = 150
+        GAP_X = 16
         GAP_Y = 16
         GRID_W = (COLS * CARD_W) + ((COLS - 1) * GAP_X)
         GRID_START_X = int((CANVAS_W - GRID_W) / 2)
@@ -360,13 +363,10 @@ class PicturesRenderer:
             if card.revealed:
                 overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(*card_color, 180))
                 overlay_draw.rounded_rectangle([0, 0, CARD_W - 1, CARD_H - 1], radius=14, outline=(*card_color, 255), width=5)
-            elif is_spymaster:
-                overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(*card_color, 110))
-                overlay_draw.rounded_rectangle([0, 0, CARD_W - 1, CARD_H - 1], radius=14, outline=(*card_color, 255), width=6)
             else:
                 overlay_draw.rounded_rectangle([0, 0, CARD_W - 1, CARD_H - 1], radius=14, outline=(110, 140, 175, 200), width=2)
 
-            # دایره پلاک شماره کارت با تراز دقیق مرکز
+            # دایره پلاک شماره کارت با تراز دقیق
             badge_r = 16
             badge_cx = 24
             badge_cy = 24
@@ -422,9 +422,93 @@ class PicturesRenderer:
 
         return board.convert("RGB")
 
+    @staticmethod
+    def render_spymaster_key(game: PicturesGameSession) -> Image.Image:
+        """
+        رندر اختصاصی نقشه برای جاسوس‌ها:
+        فقط و فقط ۲۰ تصویر و رنگ‌های مخفی در شبکه ۵×۴ (بدون هیچ پنل کناری یا کادر اضافی)
+        """
+        CARD_W = 220
+        CARD_H = 190
+        PADDING = 14
+        MARGIN = 20
+
+        width = (COLS * CARD_W) + ((COLS - 1) * PADDING) + (2 * MARGIN)
+        height = (ROWS * CARD_H) + ((ROWS - 1) * PADDING) + (2 * MARGIN)
+
+        board = Image.new("RGBA", (width, height), (15, 18, 24, 255))
+
+        font_dir = os.path.join(os.getcwd(), "assets", "fonts")
+        font_card_num = None
+        for f in ["Pofak-ExtraBold.ttf", "Pofak-Medium.ttf", "arialbd.ttf"]:
+            p = os.path.join(font_dir, f)
+            if os.path.exists(p) or not p.endswith(".ttf"):
+                try:
+                    font_card_num = ImageFont.truetype(p, 28)
+                    break
+                except Exception:
+                    pass
+        if font_card_num is None:
+            font_card_num = ImageFont.load_default()
+
+        mask = Image.new("L", (CARD_W, CARD_H), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.rounded_rectangle([0, 0, CARD_W, CARD_H], radius=14, fill=255)
+
+        for idx, card in enumerate(game.cards):
+            r = idx // COLS
+            c = idx % COLS
+            x = MARGIN + c * (CARD_W + PADDING)
+            y = MARGIN + r * (CARD_H + PADDING)
+
+            try:
+                with Image.open(card.image_path) as img:
+                    card_img = img.convert("RGBA").resize((CARD_W, CARD_H), Image.Resampling.LANCZOS)
+            except Exception:
+                card_img = Image.new("RGBA", (CARD_W, CARD_H), (45, 55, 70, 255))
+
+            card_img.putalpha(mask)
+
+            overlay = Image.new("RGBA", (CARD_W, CARD_H), (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay)
+
+            card_color = COLOR_MAP[card.team] if card.team else COLOR_MAP[card.role]
+
+            # رنگ‌آمیزی نقشه کلید جاسوس با خط کادر پررنگ
+            overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(*card_color, 125))
+            overlay_draw.rounded_rectangle([0, 0, CARD_W - 1, CARD_H - 1], radius=14, outline=(*card_color, 255), width=6)
+
+            # اگر کارت قبلاً انتخاب شده باشد، مات می‌شود و تیک سبز می‌خورد
+            if card.revealed:
+                overlay_draw.rectangle([0, 0, CARD_W, CARD_H], fill=(10, 10, 10, 140))
+                overlay_draw.ellipse([CARD_W - 42, 10, CARD_W - 10, 42], fill=(46, 204, 113, 230), outline=(255, 255, 255), width=2)
+                overlay_draw.text((CARD_W - 32, 12), "✓", fill=(255, 255, 255), font=font_card_num)
+
+            # پلاک شماره کارت
+            badge_r = 18
+            badge_cx = 28
+            badge_cy = 28
+            overlay_draw.ellipse(
+                [badge_cx - badge_r, badge_cy - badge_r, badge_cx + badge_r, badge_cy + badge_r],
+                fill=(12, 14, 18, 240),
+                outline=(255, 255, 255, 240),
+                width=2
+            )
+
+            num_str = str(card.index)
+            bbox = font_card_num.getbbox(num_str)
+            tx = badge_cx - (bbox[0] + bbox[2]) / 2
+            ty = badge_cy - (bbox[1] + bbox[3]) / 2
+            overlay_draw.text((tx, ty), num_str, fill=(255, 255, 255), font=font_card_num)
+
+            card_composite = Image.alpha_composite(card_img, overlay)
+            board.paste(card_composite, (x, y), mask)
+
+        return board.convert("RGB")
+
 
 # ==========================================
-# کیبوردها
+# دکمه‌های شیشه‌ای
 # ==========================================
 
 def build_lobby_keyboard() -> InlineKeyboardMarkup:
@@ -481,39 +565,39 @@ def _get_lobby_text(lobby: dict) -> str:
     blue_ops = ", ".join(lobby["blue_operatives"].values()) if lobby["blue_operatives"] else "❌ تعیین نشده"
 
     return (
-        "🎮 **لابی مسابقه کدنیمز تصویری (Codenames: Pictures)**\n\n"
-        "🔴 **تیم قرمز:**\n"
-        f"🕵️‍♂️ جاسوس‌ارشد: **{red_sm}**\n"
-        f"👥 ماموران: {red_ops}\n\n"
-        "🔵 **تیم آبی:**\n"
-        f"🕵️‍♂️ جاسوس‌ارشد: **{blue_sm}**\n"
-        f"👥 ماموران: {blue_ops}\n\n"
-        "▫️️ ابعاد تخته: ۵ ستون × ۴ ردیف (۲۰ تصویر)\n"
+        "🎮 <b>لابی مسابقه کدنیمز تصویری (Codenames: Pictures)</b>\n\n"
+        "🔴 <b>تیم قرمز:</b>\n"
+        f"🕵️‍♂️ جاسوس‌ارشد: <b>{html.escape(red_sm)}</b>\n"
+        f"👥 ماموران: {html.escape(red_ops)}\n\n"
+        "🔵 <b>تیم آبی:</b>\n"
+        f"🕵️‍♂️ جاسوس‌ارشد: <b>{html.escape(blue_sm)}</b>\n"
+        f"👥 ماموران: {html.escape(blue_ops)}\n\n"
+        "▫️ ابعاد تخته: ۵ ستون × ۴ ردیف (۲۰ تصویر)\n"
         "▫️ شروع مسابقه نیازمند حداقل ۴ بازیکن (یک جاسوس‌ارشد و حداقل یک مامور برای هر تیم) است.\n"
-        "⚠️ **توجه:** جاسوس‌های ارشد حتماً باید قبل از شروع، ربات را در پی‌وی Start کرده باشند."
+        "⚠️ <b>توجه:</b> جاسوس‌های ارشد حتماً باید قبل از شروع، ربات را در پی‌وی Start کرده باشند."
     )
 
 
 def _get_game_caption(game: PicturesGameSession, extra: str = "") -> str:
     turn_fa = "تیم قرمز 🔴" if game.current_turn == TEAM_RED else "تیم آبی 🔵"
-    red_sm = game.red_spymaster["name"]
-    blue_sm = game.blue_spymaster["name"]
+    red_sm = html.escape(game.red_spymaster["name"])
+    blue_sm = html.escape(game.blue_spymaster["name"])
 
     text = (
-        f"🖼 **مسابقه Codenames: Pictures**\n"
-        f"👑 نوبت: **{turn_fa}**\n\n"
-        f"🔴 اهداف قرمز: **{game.red_remaining}** (جاسوس‌ارشد: {red_sm})\n"
-        f"🔵 اهداف آبی: **{game.blue_remaining}** (جاسوس‌ارشد: {blue_sm})\n\n"
-        f"نوبت جاسوس‌‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: `دریا ۲`).\n"
+        f"🖼 <b>مسابقه Codenames: Pictures</b>\n"
+        f"👑 نوبت: <b>{turn_fa}</b>\n\n"
+        f"🔴 اهداف قرمز: <b>{game.red_remaining}</b> (جاسوس‌ارشد: {red_sm})\n"
+        f"🔵 اهداف آبی: <b>{game.blue_remaining}</b> (جاسوس‌ارشد: {blue_sm})\n\n"
+        f"نوبت جاسوس‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
         f"ماموران برای حدس تصویر روی شماره آن کلیک کنند:"
     )
     if extra:
-        text = f"{extra}\n\n" + text
+        text = f"{html.escape(extra)}\n\n" + text
     return text
 
 
 async def _update_spymaster_maps(bot: Bot, game: PicturesGameSession):
-    key_img = PicturesRenderer.render_board(game, is_spymaster=True)
+    key_img = PicturesRenderer.render_spymaster_key(game)
     bio = BytesIO()
     key_img.save(bio, format="JPEG", quality=92)
     bio.seek(0)
@@ -521,41 +605,41 @@ async def _update_spymaster_maps(bot: Bot, game: PicturesGameSession):
 
     for sm_id in (game.red_spymaster["id"], game.blue_spymaster["id"]):
         msg_id = game.spymaster_msg_ids.get(sm_id)
-        media_input = InputMediaPhoto(
-            media=BufferedInputFile(bytes_data, filename="spymaster_key.jpg"),
-            caption=None
-        )
         if msg_id:
             try:
+                media_input = InputMediaPhoto(
+                    media=BufferedInputFile(bytes_data, filename="spymaster_key.jpg"),
+                    caption=None
+                )
                 await bot.edit_message_media(
                     chat_id=sm_id,
                     message_id=msg_id,
                     media=media_input
                 )
                 continue
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not edit spymaster message in PV {sm_id}: {e}")
 
         try:
-            new_msg = await bot.send_photo(
+            msg = await bot.send_photo(
                 chat_id=sm_id,
                 photo=BufferedInputFile(bytes_data, filename="spymaster_key.jpg"),
                 caption=None,
                 protect_content=True,
                 disable_notification=True
             )
-            game.spymaster_msg_ids[sm_id] = new_msg.message_id
-        except Exception:
-            pass
+            game.spymaster_msg_ids[sm_id] = msg.message_id
+        except Exception as e:
+            logger.warning(f"Could not send spymaster map to PV {sm_id}: {e}")
 
 
 # =========================================================
-# هندلرهای تست و پیش‌نمایش در پی‌وی (در بالاترین اولویت)
+# هندلرهای مستقیم و بدون باگ پیش‌نمایش در پی‌وی
 # =========================================================
 
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("تصویری" in t or "pictures" in t.lower())))
 async def preview_pictures_cmd(message: Message):
-    """پیش‌نمایش زنده و اختصاصی تخته تصویری در پی‌وی"""
+    """پیش‌نمایش زنده تخته تصویری و نقشه اختصاصی در پی‌وی"""
     pictures_path = os.path.join(os.getcwd(), "assets", "pictures")
     game = PicturesGameSession(
         pictures_dir=pictures_path,
@@ -599,23 +683,26 @@ async def preview_pictures_cmd(message: Message):
         "(تصویر ۱۴ : Sina)"
     ]
 
-    board_img = PicturesRenderer.render_board(game, is_spymaster=False)
+    # ۱. ارسال تصویر تخته برای گروه
+    board_img = PicturesRenderer.render_board(game)
     bio = BytesIO()
     board_img.save(bio, format="JPEG", quality=95)
     bio.seek(0)
     photo_file = BufferedInputFile(bio.getvalue(), filename="pictures_preview.jpg")
 
-    key_img = PicturesRenderer.render_board(game, is_spymaster=True)
+    await message.answer_photo(
+        photo=photo_file,
+        caption="🖼 <b>پیش‌نمایش تخته Codenames: Pictures برای گروه</b>\nشامل پنل‌های کناری، لاگ‌ها، باکس سرنخ و کارت‌های بزرگ.",
+        reply_markup=build_game_keyboard(game),
+        parse_mode="HTML"
+    )
+
+    # ۲. ارسال نقشه اختصاصی جاسوس‌ارشد (بدون پنل‌های کناری و بدون متن)
+    key_img = PicturesRenderer.render_spymaster_key(game)
     bio_k = BytesIO()
     key_img.save(bio_k, format="JPEG", quality=95)
     bio_k.seek(0)
     key_file = BufferedInputFile(bio_k.getvalue(), filename="spymaster_preview.jpg")
-
-    await message.answer_photo(
-        photo=photo_file,
-        caption="🖼 **پیش‌نمایش تخته Codenames: Pictures (نمای گروه)**\nچیدمان ۵×۴ کارت‌ها، پنل‌های کناری، لاگ‌ها و اورلی رنگی.",
-        reply_markup=build_game_keyboard(game)
-    )
 
     await message.answer_photo(
         photo=key_file,
@@ -632,7 +719,7 @@ async def preview_words_cmd(message: Message):
         from game.state import CardState, CardRole, Team, TurnPhase
         from imaging.theme import DEFAULT_THEME
     except Exception as e:
-        await message.answer(f"❌ امکان فراخوانی موتور کلماتی وجود ندارد: {e}")
+        await message.answer(f"خطا در فراخوانی موتور کلماتی: {e}")
         return
 
     sample_words = [
@@ -684,9 +771,9 @@ async def preview_words_cmd(message: Message):
             blue_guessers=["ERFAN"]
         )
         photo_file = BufferedInputFile(words_bytes, filename="words_preview.png")
-        await message.answer_photo(photo=photo_file, caption="📝 **پیش‌نمایش تخته کلماتی فعلی پروژه**")
+        await message.answer_photo(photo=photo_file, caption="📝 <b>پیش‌نمایش تخته کلماتی فعلی پروژه</b>", parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"❌ خطا در رندر حالت کلماتی: {e}")
+        await message.answer(f"خطا در رندر حالت کلماتی: {e}")
 
 
 # ==========================================
@@ -717,13 +804,13 @@ async def start_pictures_lobby_cmd(message: Message):
             photo=FSInputFile(banner_file),
             caption=_get_lobby_text(pic_lobbies[chat_id]),
             reply_markup=build_lobby_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     else:
         await message.answer(
             text=_get_lobby_text(pic_lobbies[chat_id]),
             reply_markup=build_lobby_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
 
@@ -787,13 +874,13 @@ async def on_lobby_action(callback: CallbackQuery):
             await callback.message.edit_caption(
                 caption=_get_lobby_text(lobby),
                 reply_markup=build_lobby_keyboard(),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
         else:
             await callback.message.edit_text(
                 text=_get_lobby_text(lobby),
                 reply_markup=build_lobby_keyboard(),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
     except Exception:
         pass
@@ -828,7 +915,7 @@ async def on_start_game(callback: CallbackQuery):
         await callback.answer("فقط ایجادکننده لابی می‌تواند بازی را شروع کند.", show_alert=True)
         return
 
-    # شرط قانونی حداقل ۴ نفر (۱ جاسوس + حداقل ۱ مامور برای هر تیم)
+    # بررسی شرط حداقل ۴ نفر
     if not lobby["red_spymaster"]:
         await callback.answer("تیم قرمز هنوز جاسوس‌ارشد ندارد!", show_alert=True)
         return
@@ -858,49 +945,51 @@ async def on_start_game(callback: CallbackQuery):
     pic_games[chat_id] = game
     pic_lobbies.pop(chat_id, None)
 
-    # رندر نقشه کلید
-    key_img = PicturesRenderer.render_board(game, is_spymaster=True)
-    bio_key = BytesIO()
-    key_img.save(bio_key, format="JPEG", quality=92)
-    bio_key.seek(0)
-    bytes_key = bio_key.getvalue()
+    # ۱. ارسال خودکار نقشه به پی‌وی جاسوس‌ها با protect_content و بدون متن
+    await _update_spymaster_maps(callback.bot, game)
 
-    # ارسال نقشه به پی‌وی هر دو جاسوس‌ارشد بدون کپشن با protect_content
-    failed_pms = []
-    for sm in (game.red_spymaster, game.blue_spymaster):
-        try:
-            msg = await callback.bot.send_photo(
-                chat_id=sm["id"],
-                photo=BufferedInputFile(bytes_key, filename="spymaster_key.jpg"),
-                caption=None,
-                protect_content=True,
-                disable_notification=True
-            )
-            game.spymaster_msg_ids[sm["id"]] = msg.message_id
-        except Exception:
-            failed_pms.append(sm["name"])
-
-    # رندر تخته مسابقه برای گروه
-    board_img = PicturesRenderer.render_board(game, is_spymaster=False)
+    # ۲. رندر تخته مسابقه برای گروه
+    board_img = PicturesRenderer.render_board(game)
     bio_board = BytesIO()
     board_img.save(bio_board, format="JPEG", quality=92)
     bio_board.seek(0)
     board_file = BufferedInputFile(bio_board.getvalue(), filename="board.jpg")
 
-    extra_warn = ""
-    if failed_pms:
-        extra_warn = f"⚠️ ربات نتوانست به پی‌وی ({', '.join(failed_pms)}) پیام دهد. لطفاً ابتدا ربات را در پی‌وی استارت کنید."
+    # ۳. ابتدا عکس به گروه ارسال می‌شود و سپس لابی حذف می‌گردد
+    try:
+        await callback.bot.send_photo(
+            chat_id=chat_id,
+            photo=board_file,
+            caption=_get_game_caption(game),
+            reply_markup=build_game_keyboard(game),
+            parse_mode="HTML"
+        )
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.exception(f"Error sending group photo: {e}")
+        try:
+            # ارسال با حالت متن ساده در صورت بروز هر خطایی در تلگرام
+            await callback.bot.send_photo(
+                chat_id=chat_id,
+                photo=board_file,
+                caption=f"بازی Codenames: Pictures شروع شد!\nنوبت: {game.current_turn}",
+                reply_markup=build_game_keyboard(game)
+            )
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+        except Exception as e2:
+            await callback.answer(f"خطا در ارسال تصویر به گروه: {e2}", show_alert=True)
+            return
 
-    await callback.message.delete()
-    await callback.message.answer_photo(
-        photo=board_file,
-        caption=_get_game_caption(game, extra=extra_warn),
-        reply_markup=build_game_keyboard(game),
-        parse_mode="Markdown"
-    )
+    await callback.answer("بازی شروع شد!")
 
 
-# فیلتر فقط در گروه‌ها تا پیام‌های پی‌وی را نسوزاند
+# دریافت سرنخ از جاسوس‌ارشد فقط در گروه‌ها
 @router.message(F.chat.type.in_(["group", "supergroup"]), F.text & ~F.text.startswith("/"))
 async def on_spymaster_clue_msg(message: Message):
     chat_id = message.chat.id
@@ -923,7 +1012,7 @@ async def on_spymaster_clue_msg(message: Message):
 
         await _update_spymaster_maps(message.bot, game)
 
-        board_img = PicturesRenderer.render_board(game, is_spymaster=False)
+        board_img = PicturesRenderer.render_board(game)
         bio = BytesIO()
         board_img.save(bio, format="JPEG", quality=92)
         bio.seek(0)
@@ -931,9 +1020,9 @@ async def on_spymaster_clue_msg(message: Message):
         turn_fa = "قرمز 🔴" if game.current_turn == TEAM_RED else "آبی 🔵"
         await message.reply_photo(
             photo=BufferedInputFile(bio.getvalue(), filename="board.jpg"),
-            caption=f"🗣 **سرنخ جاسوس‌ارشد {turn_fa}:** `{clue_word}` برای **{clue_count}** تصویر\nماموران تیم اکنون می‌توانید حدس بزنید:",
+            caption=f"🗣 <b>سرنخ جاسوس‌ارشد {turn_fa}:</b> <code>{html.escape(clue_word)}</code> برای <b>{clue_count}</b> تصویر\nماموران تیم اکنون می‌توانید حدس بزنید:",
             reply_markup=build_game_keyboard(game),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
 
@@ -969,12 +1058,14 @@ async def on_guess_card(callback: CallbackQuery):
     extra_msg = ""
     if winner:
         winner_fa = "تیم قرمز 🔴" if winner == TEAM_RED else "تیم آبی 🔵"
-        extra_msg = f"🏆 **پایان بازی! {winner_fa} برنده مسابقه شد!**"
+        extra_msg = f"🏆 <b>پایان بازی! {winner_fa} برنده مسابقه شد!</b>"
         pic_games.pop(chat_id, None)
 
+    # آپدیت بی‌صدا و زنده در پی‌وی هر دو جاسوس‌ارشد
     await _update_spymaster_maps(callback.bot, game)
 
-    board_img = PicturesRenderer.render_board(game, is_spymaster=(winner is not None))
+    # بازتولید تخته گروه
+    board_img = PicturesRenderer.render_board(game)
     bio = BytesIO()
     board_img.save(bio, format="JPEG", quality=92)
     bio.seek(0)
@@ -982,7 +1073,7 @@ async def on_guess_card(callback: CallbackQuery):
     media = InputMediaPhoto(
         media=BufferedInputFile(bio.getvalue(), filename="board.jpg"),
         caption=_get_game_caption(game, extra=extra_msg),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
     try:
@@ -1011,7 +1102,7 @@ async def on_pass_turn(callback: CallbackQuery):
 
     await _update_spymaster_maps(callback.bot, game)
 
-    board_img = PicturesRenderer.render_board(game, is_spymaster=False)
+    board_img = PicturesRenderer.render_board(game)
     bio = BytesIO()
     board_img.save(bio, format="JPEG", quality=92)
     bio.seek(0)
@@ -1019,7 +1110,7 @@ async def on_pass_turn(callback: CallbackQuery):
     media = InputMediaPhoto(
         media=BufferedInputFile(bio.getvalue(), filename="board.jpg"),
         caption=_get_game_caption(game, extra="⏭ نوبت واگذار شد."),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     try:
         await callback.message.edit_media(media=media, reply_markup=build_game_keyboard(game))
