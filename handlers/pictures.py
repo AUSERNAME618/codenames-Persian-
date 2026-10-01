@@ -229,15 +229,14 @@ class PicturesRenderer:
         CANVAS_W = 1440
         CANVAS_H = 940
 
-        # تغییر رنگ پس‌زمینه بر اساس نوبت تیم یا باخت با قاتل
         if game.assassin_revealed:
-            bg_color = (24, 25, 29, 255)         # مشکی زغالی ملایم
+            bg_color = (24, 25, 29, 255)
             dot_color = (48, 50, 58, 180)
         elif game.winner == TEAM_RED or (not game.winner and game.current_turn == TEAM_RED):
-            bg_color = (88, 18, 26, 255)         # زرشکی شیک در نوبت قرمز
+            bg_color = (88, 18, 26, 255)
             dot_color = (135, 32, 42, 180)
         else:
-            bg_color = (11, 47, 82, 255)         # سرمه‌ای در نوبت آبی
+            bg_color = (11, 47, 82, 255)
             dot_color = (25, 75, 120, 180)
 
         board = Image.new("RGBA", (CANVAS_W, CANVAS_H), bg_color)
@@ -262,7 +261,6 @@ class PicturesRenderer:
                     pass
             return ImageFont.load_default()
 
-        # فونت‌های درشت‌تر و خوانا
         font_header = load_font("Pofak-ExtraBold.ttf", 40)
         font_sub = load_font("Pofak-Medium.ttf", 22)
         font_panel_title = load_font("Pofak-ExtraBold.ttf", 28)
@@ -615,7 +613,7 @@ def _get_game_caption(game: PicturesGameSession, extra: str = "") -> str:
         f"👑 نوبت: <b>{turn_fa}</b>\n\n"
         f"🔴 اهداف قرمز: <b>{game.red_remaining}</b> (جاسوس‌ارشد: {red_sm})\n"
         f"🔵 اهداف آبی: <b>{game.blue_remaining}</b> (جاسوس‌ارشد: {blue_sm})\n\n"
-        f"نوبت جاسوس‌‌‌‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
+        f"نوبت جاسوس‌‌ارشد {turn_fa} است که سرنخ بفرستد (مثال: <code>دریا ۲</code>).\n"
         f"ماموران برای حدس تصویر روی شماره آن کلیک کنند:"
     )
     if extra:
@@ -661,7 +659,7 @@ async def _update_spymaster_maps(bot: Bot, game: PicturesGameSession):
 
 
 # =========================================================
-# هندلرهای پیش‌نمایش در پی‌وی (در بالاترین اولویت و کاملاً ایمن)
+# هندلرهای پیش‌نمایش در پی‌وی
 # =========================================================
 
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("تصویری" in t or "pictures" in t.lower())))
@@ -677,7 +675,7 @@ async def preview_pictures_cmd(message: Message):
     )
     game.starter_team = TEAM_BLUE
     game.second_team = TEAM_RED
-    game.current_turn = TEAM_RED  # نوبت قرمز برای پیش‌‌نمایش رنگ زرشکی تخته
+    game.current_turn = TEAM_RED
 
     game.current_clue = "تازه به دوران رسیده"
     game.current_count = 1
@@ -726,7 +724,7 @@ async def preview_pictures_cmd(message: Message):
         parse_mode="HTML"
     )
 
-    # ۲. نقشه محرمانه اختصاصی جاسوس‌ارشد (بدون پنل، با ضربدر و کادر مشکی قاتل)
+    # ۲. نقشه محرمانه اختصاصی جاسوس‌ارشد
     key_img = PicturesRenderer.render_spymaster_key(game)
     bio_k = BytesIO()
     key_img.save(bio_k, format="JPEG", quality=95)
@@ -740,61 +738,54 @@ async def preview_pictures_cmd(message: Message):
     )
 
 
+# کلاس کمکی هوشمند برای لاگ حدس‌ها (سازگار هم به عنوان Tuple و هم به عنوان Object)
+class GuessLogEntry(tuple):
+    def __new__(cls, word, player):
+        return super().__new__(cls, (word, player))
+    @property
+    def word(self):
+        return self[0]
+    @property
+    def player(self):
+        return self[1]
+    def __str__(self):
+        return f"({self[0]}:{self[1]})"
+
+
 @router.message(F.chat.type == "private", F.text.func(lambda t: t and ("کلماتی" in t or "words" in t.lower())))
 async def preview_words_cmd(message: Message):
-    """پیش‌نمایش تخته کلماتی فعلی پروژه با بررسی خودکار و بدون ایجاد کرش"""
+    """پیش‌نمایش تخته کلماتی فعلی پروژه با تامین کامل تمام پارامترهای لازم"""
     try:
         import game.state as gs
         import imaging.board_renderer as br
-        import imaging.theme as th
 
-        # ۱. استخراج کلاس کارت
         CardCls = None
         for name, obj in inspect.getmembers(gs, inspect.isclass):
             if "card" in name.lower():
                 CardCls = obj
                 break
 
-        # ۲. استخراج انام نقش‌ها
-        RoleCls = None
-        for name, obj in inspect.getmembers(gs, inspect.isclass):
-            if "role" in name.lower():
-                RoleCls = obj
-                break
+        RoleCls = getattr(gs, "CardRole", None) or getattr(gs, "Role", None)
+        TeamCls = getattr(gs, "Team", None)
+        PhaseCls = getattr(gs, "TurnPhase", None) or getattr(gs, "Phase", None)
 
-        def get_enum(cls, names, default):
+        def get_enum_val(cls, candidates, default):
             if cls:
-                for n in names:
-                    if hasattr(cls, n):
-                        return getattr(cls, n)
+                for c in candidates:
+                    if hasattr(cls, c):
+                        return getattr(cls, c)
                 if hasattr(cls, "__members__") and cls.__members__:
                     return list(cls.__members__.values())[0]
             return default
 
-        r_blue = get_enum(RoleCls, ["BLUE", "BLUE_AGENT"], "BLUE")
-        r_red = get_enum(RoleCls, ["RED", "RED_AGENT"], "RED")
-        r_assassin = get_enum(RoleCls, ["ASSASSIN", "BLACK"], "ASSASSIN")
-        r_neutral = get_enum(RoleCls, ["NEUTRAL", "BYSTANDER"], "NEUTRAL")
+        r_blue = get_enum_val(RoleCls, ["BLUE", "BLUE_AGENT"], "BLUE")
+        r_red = get_enum_val(RoleCls, ["RED", "RED_AGENT"], "RED")
+        r_assassin = get_enum_val(RoleCls, ["ASSASSIN", "BLACK"], "ASSASSIN")
+        r_neutral = get_enum_val(RoleCls, ["NEUTRAL", "BYSTANDER"], "NEUTRAL")
 
-        # ۳. استخراج تیم و فاز
-        TeamCls = getattr(gs, "Team", None)
-        PhaseCls = getattr(gs, "TurnPhase", None) or getattr(gs, "Phase", None)
-        team_blue = get_enum(TeamCls, ["BLUE", "Blue"], "BLUE")
-        team_red = get_enum(TeamCls, ["RED", "Red"], "RED")
-        phase_val = get_enum(PhaseCls, ["GUESS", "GUESSING"], "GUESS")
-
-        # ۴. استخراج خودکار تم بدون نیاز به متغیر خاص
-        theme_obj = None
-        for name, obj in inspect.getmembers(th):
-            if not name.startswith("_"):
-                if "theme" in name.lower() or "default" in name.lower():
-                    theme_obj = obj() if inspect.isclass(obj) else obj
-                    break
-        if theme_obj is None:
-            for name, obj in inspect.getmembers(th):
-                if not name.startswith("_"):
-                    theme_obj = obj() if inspect.isclass(obj) else obj
-                    break
+        team_blue = get_enum_val(TeamCls, ["BLUE", "Blue"], "BLUE")
+        team_red = get_enum_val(TeamCls, ["RED", "Red"], "RED")
+        phase_guess = get_enum_val(PhaseCls, ["GUESS", "GUESSING"], "GUESS")
 
         sample_words = [
             "دوچرخه", "نوکیسه", "کابوس", "نمونه", "بلژیک",
@@ -831,48 +822,56 @@ async def preview_words_cmd(message: Message):
             else:
                 cards.append(SimpleNamespace(**c_info))
 
-        events = [
-            ("ERFAN", "دوچرخه", r_blue),
-            ("ERFAN", "نوکیسه", r_blue),
-            ("Mahsa", "بلژیک", r_red),
-            ("Mahsa", "زرنگی", r_red),
+        # ساخت آیتم‌های لاگ سازگار
+        r_log = [
+            GuessLogEntry("بازداشتگاه", "Mahsa"),
+            GuessLogEntry("محرم", "Mahsa"),
+            GuessLogEntry("زرنگی", "Mahsa")
+        ]
+        b_log = [
+            GuessLogEntry("دوچرخه", "ERFAN"),
+            GuessLogEntry("نوکیسه", "ERFAN"),
+            GuessLogEntry("خیابان", "ERFAN")
         ]
 
-        all_args = {
+        # تامین تمام آرگومان‌های احتمالی و پوزیشنال تابع render_board کلماتی
+        call_kwargs = {
             "cards": cards,
             "board": cards,
+            "current_turn": team_blue,
+            "turn_team": team_blue,
+            "round_number": 1,
+            "red_cards_remaining": 0,
+            "blue_cards_remaining": 0,
             "red_remaining": 0,
             "blue_remaining": 0,
-            "current_team": team_blue,
-            "turn_team": team_blue,
-            "turn_phase": phase_val,
-            "winner": team_blue,
+            "red_guess_log": r_log,
+            "blue_guess_log": b_log,
             "clue_word": "تازه به دوران رسیده",
-            "clue": "تازه به دوران رسیده",
+            "clue_number": 1,
             "clue_count": 1,
-            "count": 1,
             "spymaster_mode": False,
-            "theme": theme_obj,
-            "recent_events": events,
-            "events": events,
+            "winner": team_blue,
+            "turn_phase": phase_guess,
             "red_spymaster": "Abolfazl",
             "blue_spymaster": "Flora",
-            "red_guessers": ["Mahsa"],
-            "blue_guessers": ["ERFAN"],
             "red_operatives": ["Mahsa"],
             "blue_operatives": ["ERFAN"],
+            "red_guessers": ["Mahsa"],
+            "blue_guessers": ["ERFAN"],
         }
 
+        # بررسی سیگنیچر و پر کردن فیلتر شده آرگومان‌ها
         sig_r = inspect.signature(br.render_board)
         p_names = list(sig_r.parameters.keys())
-        call_kwargs = {k: v for k, v in all_args.items() if k in p_names}
+        filtered_kwargs = {k: v for k, v in call_kwargs.items() if k in p_names}
 
-        if "game" in p_names and "game" not in call_kwargs:
-            call_kwargs["game"] = SimpleNamespace(**all_args)
-        if "state" in p_names and "state" not in call_kwargs:
-            call_kwargs["state"] = SimpleNamespace(**all_args)
+        # اگر پارامتری در لیست سیگنیچر بود ولی مقدار نداشت، با مقدار پیش‌فرض پر می‌کنیم
+        for p in p_names:
+            if p not in filtered_kwargs and p in call_kwargs:
+                filtered_kwargs[p] = call_kwargs[p]
 
-        result = br.render_board(**call_kwargs)
+        result = br.render_board(**filtered_kwargs)
 
         if isinstance(result, Image.Image):
             bio = BytesIO()
@@ -886,7 +885,7 @@ async def preview_words_cmd(message: Message):
         elif hasattr(result, "read"):
             bytes_out = result.read()
         else:
-            await message.answer("❌ فرمت خروجی رندر کلماتی ناشناخته است.")
+            await message.answer("❌ فرمت خروجی تصویر کلماتی پشتیبانی نمی‌شود.")
             return
 
         photo_file = BufferedInputFile(bytes_out, filename="words_preview.png")
@@ -1071,7 +1070,6 @@ async def on_start_game(callback: CallbackQuery):
         await callback.answer(f"خطا در ایجاد بازی: {e}", show_alert=True)
         return
 
-    # رندر تخته مسابقه برای گروه
     board_img = PicturesRenderer.render_board(game)
     bio_board = BytesIO()
     board_img.save(bio_board, format="JPEG", quality=92)
