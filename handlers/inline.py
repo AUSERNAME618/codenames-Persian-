@@ -1,5 +1,6 @@
 """
 هندلر اینلاین ربات کدنیمز
+پشتیبانی از حالت‌های کلماتی (آسان، متوسط، سخت) و حالت تصویری (Pictures)
 """
 from aiogram import Router
 from aiogram.types import (
@@ -45,11 +46,11 @@ async def inline_query_handler(inline_query: InlineQuery):
             id="mode_pictures",
             title="کدنیمز - تصویری 🖼",
             description="حالت رسمی Codenames: Pictures با ۲۰ کارت تصویری (شبکه ۵×۴)",
-            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/medium.png",
+            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/Pictures.jpg",
             input_message_content=InputTextMessageContent(
                 message_text="/pictures"
             ),
         ),
     ]
 
-    await inline_query.answer(results, cache_time=5, is_personal=True)
+    await inline_query.answer(results, cache_time=1, is_personal=True)
