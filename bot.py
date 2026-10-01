@@ -77,7 +77,7 @@ async def main() -> None:
     # روتر حالت تصویری (Pictures)
     dp.include_router(pictures_handlers.router)
 
-    # روترهای اصلی ربات
+    # روترهای اصلی ربات برای حالت کلمات
     dp.include_router(commands.router)
     dp.include_router(help_handlers.router)
     dp.include_router(lobby.router)
@@ -90,7 +90,6 @@ async def main() -> None:
     port = int(os.getenv("PORT", "8080"))
     await _run_keepalive_server(port)
 
-    # تسک‌های دوره‌ای نگه‌دارنده دیتابیس
     background_tasks: set[asyncio.Task] = set()
     for coro in (_run_periodic_cleanup(db_pool), _run_db_keepalive(db_pool)):
         task = asyncio.create_task(coro)
