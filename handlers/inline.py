@@ -43,10 +43,10 @@ async def inline_query_handler(inline_query: InlineQuery):
             ),
         ),
         InlineQueryResultArticle(
-            id="mode_pictures",
+            id="mode_pictures_v2",
             title="کدنیمز - تصویری 🖼",
             description="حالت رسمی Codenames: Pictures با ۲۰ کارت تصویری (شبکه ۵×۴)",
-            thumbnail_url="https://raw.githubusercontent.com/AUSERNAME618/codenames-Persian-/main/assets/images/Pictures.jpg?v=2",
+            thumbnail_url="https://cdn.jsdelivr.net/gh/AUSERNAME618/codenames-Persian-@main/assets/images/Pictures.jpg",
             input_message_content=InputTextMessageContent(
                 message_text="/pictures"
             ),
